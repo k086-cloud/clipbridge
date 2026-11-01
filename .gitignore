@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+*.egg-info/
+build/
+dist/
+
+# ClipBridge local state (contains the pairing token)
+config.json
+*.local.json
+
+# Logs and environment files
+*.log
+.env
+
+# Editors and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Xcode (for the future ios/ directory)
+xcuserdata/
+DerivedData/
+*.xcuserstate
