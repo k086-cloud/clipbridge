@@ -30,6 +30,15 @@ def test_health_needs_no_token(client):
     assert body["uptime_seconds"] >= 0
 
 
+def test_json_responses_declare_utf8(client, auth, history):
+    history.add("中文 and ümlauts", "pc")
+    for path in ("/health", "/clip/latest", "/clip/history"):
+        response = client.get(path, headers=auth)
+        assert response.status_code == 200
+        assert response.headers["content-type"] == "application/json; charset=utf-8"
+    assert client.get("/clip/latest", headers=auth).json()["content"] == "中文 and ümlauts"
+
+
 # --- authentication ---------------------------------------------------------
 
 

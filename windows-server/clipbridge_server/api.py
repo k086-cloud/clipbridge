@@ -19,6 +19,13 @@ from .config import Config
 from .history import ClipHistory, ClipItem
 
 
+class UTF8JSONResponse(JSONResponse):
+    """JSON with an explicit charset; Windows PowerShell 5.1 otherwise decodes
+    non-ASCII text as Latin-1 and shows garbage."""
+
+    media_type = "application/json; charset=utf-8"
+
+
 class ClipIn(BaseModel):
     content: str = Field(min_length=1, description="Plain text to put on the PC clipboard")
 
@@ -65,7 +72,12 @@ def create_app(
             if start_monitor:
                 monitor.stop()
 
-    app = FastAPI(title="ClipBridge Windows Server", version=__version__, lifespan=lifespan)
+    app = FastAPI(
+        title="ClipBridge Windows Server",
+        version=__version__,
+        lifespan=lifespan,
+        default_response_class=UTF8JSONResponse,
+    )
     app.state.token = config.token
     app.state.started_at = time.monotonic()
     protected = [Depends(require_token)]
@@ -77,7 +89,7 @@ def create_app(
     async def reject_oversized_bodies(request: Request, call_next):  # type: ignore[no-untyped-def]
         length = request.headers.get("content-length", "")
         if length.isdigit() and int(length) > max_body_bytes:
-            return JSONResponse(
+            return UTF8JSONResponse(
                 status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
                 content={"detail": f"Request body exceeds {max_body_bytes} bytes."},
             )
