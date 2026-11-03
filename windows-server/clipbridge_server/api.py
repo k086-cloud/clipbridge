@@ -51,6 +51,9 @@ class HealthOut(BaseModel):
     history_items: int
     monitor_running: bool
     uptime_seconds: float
+    # Limits the phone needs to know (added in 0.2.0): config.json can change both.
+    max_text_bytes: int
+    history_size: int
 
 
 def create_app(
@@ -103,6 +106,8 @@ def create_app(
             history_items=len(history),
             monitor_running=monitor.is_running,
             uptime_seconds=round(time.monotonic() - app.state.started_at, 1),
+            max_text_bytes=config.max_text_bytes,
+            history_size=max_items,
         )
 
     @app.get("/clip/latest", response_model=ClipOut, dependencies=protected)
@@ -117,9 +122,16 @@ def create_app(
 
     @app.get("/clip/history", response_model=HistoryOut, dependencies=protected)
     async def recent(
-        limit: Annotated[int, Query(ge=1, le=max_items, description="Newest first")] = max_items,
+        limit: Annotated[
+            int,
+            Query(ge=1, description="Newest first; values above history_size are clamped to it"),
+        ] = max_items,
     ) -> HistoryOut:
-        return HistoryOut(items=[ClipOut.from_item(item) for item in history.recent(limit)])
+        # Clamp instead of 422: the phone asks for a fixed 5 and must not have to
+        # know history_size (which config.json can set below 5).
+        return HistoryOut(
+            items=[ClipOut.from_item(item) for item in history.recent(min(limit, max_items))]
+        )
 
     @app.post(
         "/clip",

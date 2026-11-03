@@ -20,9 +20,9 @@ Windows 电脑 ↔ iPhone 剪贴板同步。Windows 端 Python 服务 + iOS 键�
 - `cli.py` — `python -m clipbridge_server [--port] [--host] [--no-qr] [--log-level] [--config]`
 
 ### API 契约（iOS 端以此为准）
-- `GET /health` — 免鉴权
-- `GET /clip/latest` — 最新一条，空则 404
-- `GET /clip/history?limit=N` — N 为 1..history_size（默认 20，超范围返回 422），省略时取全部；最新在前；响应为 `{"items": [...]}`
+- `GET /health` — 免鉴权；返回 `{status, version, history_items, monitor_running, uptime_seconds, max_text_bytes, history_size}`（后两个 0.2.0 起才有，iOS 端按可选解析）
+- `GET /clip/latest` — 最新一条，空则 404（iOS 端不用它：404 和「host 指错」分不开，改用 `history?limit=1`）
+- `GET /clip/history?limit=N` — N ≥ 1（0、负数、非数字返回 422），超过 history_size 时截断为 history_size（0.1 版是 422，iOS 端对旧服务端仍有 422 → limit=1 的退化），省略时取全部；最新在前；响应为 `{"items": [...]}`
 - `POST /clip`，body `{"content": "..."}` — 写入电脑剪贴板，记为 source=phone，返回 201；content 为空返回 422；UTF-8 编码超 max_text_bytes（默认 102400 字节）返回 413；写剪贴板失败返回 503
 - 除 /health 外都要 `Authorization: Bearer <token>`，否则 401
 - 配对二维码内容：`clipbridge://pair?host=<ip>&port=<port>&token=<token>`
@@ -67,7 +67,7 @@ Windows 电脑 ↔ iPhone 剪贴板同步。Windows 端 Python 服务 + iOS 键�
 ### ClipBridgeKit（`ios/ClipBridgeKit`，本地 Swift Package）
 - `swift-tools-version: 5.9`（Swift 5 语言模式，别升到 6——App target 默认 MainActor 隔离，跨模块会报一堆并发错误）；platforms iOS 17 / macOS 12（macOS 只为了 `swift test`）；只 import Foundation 和 Security，禁止 UIKit
 - 模块：`PairingInfo`/`PairingEndpoint`、`PairingURLParser`、`ClipItem`/`HistoryResponse`/`ClipBridgeJSON`、`ClipBridgeError`、`ClipBridgeClient`、`PairingStore`（协议 + `SharedPairingStore`、`UserDefaultsEndpointStore`、`InMemory*`）、`KeychainTokenStore`/`KeychainError`/`KeychainAccessGroup`、`ClipBridgeIdentifiers`
-- 客户端约定：任何 2xx 算成功；`latest()` 404 → nil（token 正确只是没内容）；`recentHistory(preferredLimit: 5)` 收到 422 退化成 limit=1（省略 limit 会拉全部，不能当兜底）；422 错误体是数组、其他是字符串；时间戳用 ISO8601DateFormatter 带毫秒；发送前本地拦空内容和 UTF-8 超 102400 字节；超时 3 s / 5 s；`transport(.notConnectedToInternet)` 多半是本地网络权限被拒，`.appTransportSecurityRequiresSecureConnection` 是 ATS 没放行
+- 客户端约定：任何 2xx 算成功；`health()` 必须解出 `HealthResponse`（解不出 = 对面不是 ClipBridge）；`latest()` 走 `history?limit=1`，空数组 → nil，真 404 → `.notFound`（host 指错）；`recentHistory(preferredLimit: 5)` 收到 422 退化成 limit=1（省略 limit 会拉全部，不能当兜底）；422 错误体是数组、其他是字符串；时间戳用 ISO8601DateFormatter 带毫秒；发送前本地拦空内容和 UTF-8 超 102400 字节；超时 3 s / 5 s；`transport(.notConnectedToInternet)` 多半是本地网络权限被拒，`.appTransportSecurityRequiresSecureConnection` 是 ATS 没放行，`underlying(NSPOSIXErrorDomain, 1)` 是扩展沙盒禁网；错误的中文文案在 `ClipBridgeMessages.swift`（LocalizedError）
 - 测试：`cd ios/ClipBridgeKit && swift test`（网络用 MockURLProtocol，Keychain 用 InMemoryTokenStore；真 Keychain 在 macOS 命令行无签名跑不了，只在真机验证）。改 API 契约或存储逻辑必须补测试
 
 ### Info.plist（已加）
@@ -81,7 +81,7 @@ Windows 电脑 ↔ iPhone 剪贴板同步。Windows 端 Python 服务 + iOS 键�
 - 键盘没开完全访问时禁一切网络；Keychain 能否读 Apple 没写，以 `hasFullAccess` 为准，不用 Keychain 失败推断
 - 内存：键盘约 50–70 MB、共享扩展约 120 MB，超了静默被杀；键盘只显示截断文本
 - Xcode 27 新建工程默认创建嵌套 git 仓库，建工程时取消勾选（这次已删掉 ios/.git）
-- 服务端 `history?limit=` 超过 history_size 返回 422（建议服务端改成截断，单独 commit 并同步契约）
+- 服务端 0.2.0 起 `history?limit=` 超过 history_size 会截断；Windows 上的服务要 `git pull` 后重启才生效，旧服务端仍返回 422（客户端有退化处理）
 
 ### 后续阶段
 - 阶段 2 主 App（扫码 AVCaptureMetadataOutput / 手动输入、「测试连接」先 /health 再 /clip/latest 且 404 算成功、引导开键盘和完全访问）→ 阶段 3 键盘（hasFullAccess 判断、recentHistory 卡片、地球键）→ 阶段 4 共享扩展（激活规则改文本、POST 完成后再 completeRequest）→ 阶段 5 收尾

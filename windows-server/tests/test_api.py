@@ -28,6 +28,8 @@ def test_health_needs_no_token(client):
     assert body["history_items"] == 0
     assert body["monitor_running"] is False
     assert body["uptime_seconds"] >= 0
+    assert body["max_text_bytes"] == 1024
+    assert body["history_size"] == 5
 
 
 def test_json_responses_declare_utf8(client, auth, history):
@@ -108,10 +110,21 @@ def test_history_is_newest_first_with_limit(client, auth, history):
     assert [item["content"] for item in limited.json()["items"]] == ["item 3", "item 2"]
 
 
-@pytest.mark.parametrize("limit", [0, -1, 6, "many"])
+@pytest.mark.parametrize("limit", [0, -1, "many"])
 def test_history_limit_is_validated(client, auth, limit):
     response = client.get("/clip/history", params={"limit": limit}, headers=auth)
     assert response.status_code == 422
+
+
+@pytest.mark.parametrize("limit", [6, 1000])
+def test_history_limit_above_size_is_clamped(client, auth, history, limit):
+    for index in range(7):
+        history.add(f"item {index}", "pc")
+    response = client.get("/clip/history", params={"limit": limit}, headers=auth)
+    assert response.status_code == 200
+    assert [item["content"] for item in response.json()["items"]] == [
+        f"item {index}" for index in range(6, 1, -1)
+    ]
 
 
 # --- paste from phone -------------------------------------------------------

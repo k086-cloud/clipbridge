@@ -75,9 +75,9 @@ All responses are JSON. Every endpoint except `/health` requires the header
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/health` | Service status, version, history size, uptime |
+| GET | `/health` | Service status, version, history size, uptime, and the limits `max_text_bytes` / `history_size` |
 | GET | `/clip/latest` | Newest history item (`404` when there is none yet) |
-| GET | `/clip/history?limit=N` | Newest `N` items, newest first (`N` from 1 to 20, default 20) |
+| GET | `/clip/history?limit=N` | Newest `N` items, newest first (`N` >= 1; anything above `history_size` is clamped to it; default: all) |
 | POST | `/clip` | Body `{"content": "text"}`; puts the text on the PC clipboard and records it with source `phone`; returns `201` and the item |
 
 An item looks like:
