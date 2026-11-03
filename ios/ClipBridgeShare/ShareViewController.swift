@@ -7,8 +7,12 @@
 
 import UIKit
 import Social
+import ClipBridgeKit
 
 class ShareViewController: SLComposeServiceViewController {
+
+    /// 阶段 4 实现共享扩展时使用；现在先把共享层链接进来，确认三个 target 都能 import。
+    private let pairingStore: (any PairingStore)? = SharedPairingStore.live()
 
     override func isContentValid() -> Bool {
         // Do validation of contentText and/or NSExtensionContext attachments here

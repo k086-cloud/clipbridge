@@ -6,11 +6,15 @@
 //
 
 import UIKit
+import ClipBridgeKit
 
 class KeyboardViewController: UIInputViewController {
 
     @IBOutlet var nextKeyboardButton: UIButton!
-    
+
+    /// 阶段 3 实现键盘时使用；现在先把共享层链接进来，确认三个 target 都能 import。
+    private let pairingStore: (any PairingStore)? = SharedPairingStore.live()
+
     override func updateViewConstraints() {
         super.updateViewConstraints()
         

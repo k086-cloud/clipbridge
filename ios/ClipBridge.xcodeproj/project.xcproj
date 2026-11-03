@@ -10,6 +10,12 @@
       "Base",
     ],
   },
+  "packages": [
+    {
+      "kind": "local",
+      "path": "ClipBridgeKit",
+    },
+  ],
   "files": [
     {
       "kind": "folder",
@@ -53,7 +59,9 @@
           ],
         },
       ],
-    }, {
+    },
+    { "kind": "group", "name": "Frameworks" },
+    {
       "kind": "group",
       "name": "Products",
       "children": [
@@ -81,6 +89,13 @@
           "kind": "copy",
           "name": "Embed Foundation Extensions",
           "bundle-base-path": "plugins-directory",
+        },
+      ],
+      "package-product-members": [
+        {
+          "package": "ClipBridgeKit",
+          "product-name": "ClipBridgeKit",
+          "build-phase": { "build-phase": "frameworks" },
         },
       ],
       "build-settings": {
@@ -125,6 +140,13 @@
         "frameworks",
         "resources",
       ],
+      "package-product-members": [
+        {
+          "package": "ClipBridgeKit",
+          "product-name": "ClipBridgeKit",
+          "build-phase": { "build-phase": "frameworks" },
+        },
+      ],
       "build-settings": {
         "CODE_SIGN_ENTITLEMENTS": "ClipBridgeKeyboard/ClipBridgeKeyboard.entitlements",
         "CODE_SIGN_IDENTITY": "Apple Development",
@@ -161,6 +183,13 @@
         "compile-sources",
         "frameworks",
         "resources",
+      ],
+      "package-product-members": [
+        {
+          "package": "ClipBridgeKit",
+          "product-name": "ClipBridgeKit",
+          "build-phase": { "build-phase": "frameworks" },
+        },
       ],
       "build-settings": {
         "CODE_SIGN_ENTITLEMENTS": "ClipBridgeShare/ClipBridgeShare.entitlements",
