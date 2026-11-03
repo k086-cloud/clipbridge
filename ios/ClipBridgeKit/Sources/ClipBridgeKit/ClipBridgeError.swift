@@ -6,8 +6,8 @@ public enum ClipBridgeError: Error, Equatable, Sendable {
     case unauthorized
     /// 404：路径不存在——host/port 指向的不是 ClipBridge 服务（随便一个 HTTP 服务都会 404），或接口改名了。
     case notFound
-    /// 413：服务端判定超过 max_text_bytes。
-    case payloadTooLarge
+    /// 413：服务端判定超过 max_text_bytes。附服务端的说明（里面有实际的上限，config.json 可改）。
+    case payloadTooLarge(String)
     /// 422：参数不合法（history 的 limit 超范围、content 为空等）。附服务端的说明。
     case unprocessable(String)
     /// 503：写电脑剪贴板失败。

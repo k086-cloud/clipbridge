@@ -65,9 +65,15 @@ public enum SharedTextDecoder {
         }
     }
 
-    /// 纯空白不算文字。
+    /// 能当正文用的字符串：非空白、不含 NUL、也不是被当成文本解出来的归档字节
+    /// （NSAttributedString 的纯文本读取器会把 bplist 归档解成以 "bplist00" 开头的"字符串"）。
     public static func nonEmpty(_ text: String) -> String? {
-        text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : text
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              !text.contains("\0"),
+              !text.hasPrefix("bplist0") else {
+            return nil
+        }
+        return text
     }
 
     /// 日志用：前几个字节的十六进制。

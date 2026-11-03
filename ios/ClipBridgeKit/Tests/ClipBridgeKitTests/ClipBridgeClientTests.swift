@@ -208,7 +208,7 @@ final class ClipBridgeClientTests: XCTestCase {
 
     func testSendMapsServerErrors() async {
         MockURLProtocol.handler = { _ in (413, json(#"{"detail":"Text exceeds the 102400 byte limit."}"#)) }
-        await assertThrows(.payloadTooLarge) { try await self.client.send("x") }
+        await assertThrows(.payloadTooLarge("Text exceeds the 102400 byte limit.")) { try await self.client.send("x") }
 
         MockURLProtocol.handler = { _ in
             (422, json(#"{"detail":[{"type":"string_too_short","loc":["body","content"],"msg":"String should have at least 1 character","input":"","ctx":{"min_length":1}}]}"#))

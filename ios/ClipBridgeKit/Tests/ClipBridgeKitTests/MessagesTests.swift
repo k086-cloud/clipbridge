@@ -4,7 +4,7 @@ import XCTest
 final class MessagesTests: XCTestCase {
     func testEveryClipBridgeErrorHasAMessage() {
         let errors: [ClipBridgeError] = [
-            .unauthorized, .notFound, .payloadTooLarge, .unprocessable(""), .unprocessable("x"),
+            .unauthorized, .notFound, .payloadTooLarge(""), .payloadTooLarge("Text exceeds the 1024 byte limit."), .unprocessable(""), .unprocessable("x"),
             .clipboardUnavailable(""), .unexpectedStatus(500), .contentEmpty, .contentTooLarge(bytes: 2, limit: 1),
             .invalidURL, .invalidResponse, .transport(.notConnectedToInternet), .transport(.timedOut),
             .transport(.badServerResponse), .underlying(domain: NSPOSIXErrorDomain, code: 1), .underlying(domain: "x", code: 9),

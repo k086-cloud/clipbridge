@@ -67,6 +67,18 @@ final class SharedTextDecoderTests: XCTestCase {
         XCTAssertEqual(SharedTextDecoder.nonEmpty(" a "), " a ")
     }
 
+    func testArchiveBytesDecodedAsAStringAreRejected() throws {
+        // loadObject(NSAttributedString) 会把归档字节当文本解出来；这种"字符串"不能当正文
+        let archive = try archived(NSAttributedString(string: "hello"))
+        let bogus = String(decoding: archive, as: UTF8.self)
+        XCTAssertTrue(bogus.hasPrefix("bplist00"))
+        XCTAssertNil(SharedTextDecoder.nonEmpty(bogus))
+        XCTAssertNil(SharedTextDecoder.nonEmpty("bplist00\u{10}\u{02}"))
+        XCTAssertNil(SharedTextDecoder.nonEmpty("h\0i"))
+        XCTAssertNil(SharedTextDecoder.text(fromLoadedItem: NSAttributedString(string: bogus)))
+        XCTAssertEqual(SharedTextDecoder.nonEmpty("bplist is a word in this sentence"), "bplist is a word in this sentence")
+    }
+
     func testLoadedItemVariants() throws {
         XCTAssertEqual(SharedTextDecoder.text(fromLoadedItem: "plain"), "plain")
         XCTAssertEqual(SharedTextDecoder.text(fromLoadedItem: "bridged" as NSString), "bridged")

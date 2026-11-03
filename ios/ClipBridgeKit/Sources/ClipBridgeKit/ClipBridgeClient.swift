@@ -161,7 +161,7 @@ public struct ClipBridgeClient: Sendable {
         switch response.statusCode {
         case 401: throw ClipBridgeError.unauthorized
         case 404: throw ClipBridgeError.notFound
-        case 413: throw ClipBridgeError.payloadTooLarge
+        case 413: throw ClipBridgeError.payloadTooLarge(message)
         case 422: throw ClipBridgeError.unprocessable(message)
         case 503: throw ClipBridgeError.clipboardUnavailable(message)
         default: throw ClipBridgeError.unexpectedStatus(response.statusCode)
