@@ -45,7 +45,8 @@ Windows 电脑 ↔ iPhone 剪贴板同步。Windows 端 Python 服务 + iOS 键�
 ### 现状（2026-11-03）
 - 阶段 0、1 完成：工程、三个 target、App Groups + Keychain Sharing 都已签名装到真机，codesign 实测 entitlements 正确；`ClipBridgeKit` 已作为本地包链接到三个 target，`swift test` 全过
 - 阶段 2 主 App 真机验收通过：App 内扫码 / 确认 / 保存、测试连接两项全绿、401 和连不上的提示、系统相机扫码弹「Open in ClipBridge」直达确认页、AppIdentifierPrefix 展开、`SharedPairingStore.live()` 和 Keychain 写入都正常。**本地网络权限弹窗没测到**：校园网里手机和电脑在不同子网、流量经路由转发，iOS 不把它当本地网络（TN3179 的定义），从不弹窗、设置里也没有 ClipBridge 条目；-1009 那条路径留到手机热点下补测
-- 阶段 3 键盘扩展：代码在 `ios/ClipBridgeKeyboard/`（KeyboardViewController + KeyboardView，纯 UIKit），经审查修正、真机 SDK 构建通过，待真机验证。键盘里的几条经验：状态行必须固定高度（否则 UIStackView 让它吃掉全部高度，卡片区域被压成 0 pt，布局不报错）；卡片是 UIControl，滚动视图要重写 `touchesShouldCancel(in:)` 返回 true 才能按住拖动；隐藏的地球键宽度约束要用 999 优先级（UIStackView 隐藏时加 required 的 width == 0）；横屏高度用 190（键盘跟随宿主方向，和主 App 锁竖屏无关）；`UIPasteboard.string` 在 iOS 16+ 每次都可能弹「允许粘贴」，返回 nil 表示用户拒绝，不是剪贴板为空
+- 阶段 3 键盘扩展真机验收通过（2026-11-04）：没开完全访问时能读 App Group 里的地址并提示；开了之后拉取卡片、插入、刷新、发送剪贴板（弹「允许粘贴」）都正常。代码在 `ios/ClipBridgeKeyboard/`（KeyboardViewController + KeyboardView，纯 UIKit）。键盘里的几条经验：状态行必须固定高度（否则 UIStackView 让它吃掉全部高度，卡片区域被压成 0 pt，布局不报错）；卡片是 UIControl，滚动视图要重写 `touchesShouldCancel(in:)` 返回 true 才能按住拖动；隐藏的地球键宽度约束要用 999 优先级（UIStackView 隐藏时加 required 的 width == 0）；横屏高度用 190（键盘跟随宿主方向，和主 App 锁竖屏无关）；`UIPasteboard.string` 在 iOS 16+ 每次都可能弹「允许粘贴」，返回 nil 表示用户拒绝，不是剪贴板为空
+- 阶段 4 共享扩展：`ios/ClipBridgeShare/ShareViewController.swift`（纯 UIKit），真机 SDK 构建通过，待真机验证。取文字顺序：public.plain-text 的 `loadDataRepresentation(for:)` → public.text 的 `loadObject(ofClass: NSAttributedString.self)` → `attributedContentText`（不用 loadItem，iOS 27 SDK 已标记到期）；POST /clip 成功后 0.8 秒 `completeRequest`，失败显示原因 + 可重试时给「重试」，关闭用 `cancelRequest(withError:)`（用户取消是 NSUserCancelledError，失败是自定义域 + 原因）；超时 8 s / 12 s（别用键盘那套 3 秒）
 - 无害的控制台日志：首次访问 App Group UserDefaults 的 CFPrefs「detaching from cfprefsd」、相机关闭时的 FigCaptureSourceRemote err=-17281
 - 签名：免费 Apple ID（Personal Team，Team ID `L24ST657GM`）。描述文件 7 天过期（过期后重新 ⌘R 覆盖安装即可，键盘启用状态保留）；每周最多注册 10 个 App ID、每台设备最多 3 个 App（扩展可能也计数）
 - 真机：iPhone 17 Pro Max「char」，iOS 26.6.1。Xcode 27.2 只能给 iOS 17+ 的设备装调试包；部署目标 iOS 17.6（Xcode 27.2 能选的最低值）
@@ -79,7 +80,7 @@ Windows 电脑 ↔ iPhone 剪贴板同步。Windows 端 Python 服务 + iOS 键�
 - 三个 target：`AppIdentifierPrefix = $(AppIdentifierPrefix)`、`NSAppTransportSecurity → NSAllowsLocalNetworking = YES`（ATS 对扩展也生效，不能只加主 App）
 - 主 App `ios/ClipBridge/Info.plist`（与生成的 Info.plist 合并；工程里用 membership-exceptions 把它排除出资源）：`NSLocalNetworkUsageDescription`（只放主 App，不放扩展）、`NSCameraUsageDescription`、URL scheme `clipbridge`
 - 键盘：`RequestsOpenAccess = YES`（否则没有「允许完全访问」开关，也没网络）
-- 共享扩展：`NSExtensionActivationRule` 仍是模板的 `TRUEPREDICATE`（构建有黄色警告），阶段 4 改成只接受文本
+- 共享扩展：`NSExtensionActivationRule` 是字典 `{NSExtensionActivationSupportsText: true}`（只对文字出现在分享面板，分享网址不出现）；`NSExtensionPrincipalClass = $(PRODUCT_MODULE_NAME).ShareViewController`（自定义 UIKit 界面，模板的 SLComposeServiceViewController 和 storyboard 已删）；分享面板里显示名 `CFBundleDisplayName = ClipBridge`
 
 ### 已知坑
 - 本地网络权限按 App 记录、扩展继承；必须由主 App 前台先触发（「测试连接」）；iOS 18 起没有 NSLocalNetworkUsageDescription 弹窗不出现；被拒表现为 URLError -1009；模拟器不支持，只能真机测
@@ -89,7 +90,7 @@ Windows 电脑 ↔ iPhone 剪贴板同步。Windows 端 Python 服务 + iOS 键�
 - 服务端 0.2.0 起 `history?limit=` 超过 history_size 会截断；Windows 上的服务要 `git pull` 后重启才生效，旧服务端仍返回 422（客户端有退化处理）
 
 ### 后续阶段
-- 阶段 2 主 App（扫码 AVCaptureMetadataOutput / 手动输入、「测试连接」先 /health 再 /clip/latest 且 404 算成功、引导开键盘和完全访问）→ 阶段 3 键盘（hasFullAccess 判断、recentHistory 卡片、地球键）→ 阶段 4 共享扩展（激活规则改文本、POST 完成后再 completeRequest）→ 阶段 5 收尾
+- 阶段 4 共享扩展待真机验证 → 阶段 5 收尾（README、CLAUDE.md 定稿、热点下补测本地网络弹窗）
 
 ## 约定
 - 第一版只做纯文本；图片/文件、历史持久化、mDNS、HTTPS、开机自启、托盘图标都是后续
