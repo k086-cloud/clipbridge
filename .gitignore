@@ -22,7 +22,13 @@ config.json
 .DS_Store
 Thumbs.db
 
-# Xcode (for the future ios/ directory)
+# Xcode / SwiftPM (ios/)
 xcuserdata/
 DerivedData/
 *.xcuserstate
+*.xcscmblueprint
+*.xccheckout
+.build/
+.swiftpm/
+*.mobileprovision
+*.p12
