@@ -1,7 +1,9 @@
 # ClipBridge Windows server
 
 A small Python service that watches the Windows clipboard and shares it over
-HTTP with your phone on the same Wi-Fi. Version 0.1 handles plain text only.
+HTTP with your phone on the same Wi-Fi. Version 0.2.0 handles plain text
+only. The phone side (keyboard + share extension) lives in `../ios`; the
+end-to-end setup is in the [root README](../README.md).
 
 What it does:
 
@@ -146,7 +148,26 @@ netsh advfirewall firewall add rule name="ClipBridge 8765" dir=in action=allow p
 Also make sure the Wi-Fi network is set to **Private** in Windows settings;
 on Public networks inbound connections are blocked regardless of the rule.
 
-## Test from an iPhone on the same Wi-Fi
+## Use it with the iPhone app
+
+1. Keep this service running; the banner's QR code is the pairing code.
+2. Install the iOS app from a Mac with Xcode (see the
+   [root README](../README.md), "Setup from zero").
+3. On the phone: ClipBridge app → scan the QR code → *测试连接* (both rows
+   green) → add the ClipBridge keyboard in Settings and turn on *Allow Full
+   Access* → use the keyboard to insert PC clipboard items, and Share →
+   ClipBridge to send text to the PC.
+4. After `git pull` on the PC, restart the service; the phone picks up the
+   new `/health` fields and the clamped `limit` automatically.
+
+If the phone cannot connect: the phone and the PC must be on the same Wi-Fi
+subnet (campus networks often isolate clients or route between subnets — a
+phone hotspot with the PC joined to it is the reliable fallback), the
+firewall rule above must allow inbound TCP 8765, and the token on the phone
+must match `config.json` (delete the file to get a new token, then pair
+again).
+
+## Test from an iPhone without the app
 
 1. Open Safari and visit `http://<LAN address>:8765/health`. A JSON reply
    proves the phone can reach the PC and the firewall is open.
