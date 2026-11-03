@@ -1,11 +1,11 @@
 # ClipBridge
 
 Windows 电脑 ↔ iPhone 剪贴板同步。Windows 端 Python 服务 + iOS 键盘扩展（电脑→手机）+ iOS 共享扩展（手机→电脑）。
-当前状态：Windows 端 v0.1（纯文本）已完成；iOS 部分尚未开始，将在 Mac 上开发。
+当前状态：Windows 端 v0.1（纯文本）已完成；iOS 端在 Mac 上开发中——阶段 0（签名与 capability 实测）完成，阶段 1 的 `ClipBridgeKit` 已写好待链接进工程，详见「iOS 端」。
 
 ## 仓库结构（monorepo）
 - `windows-server/` — Python 服务（FastAPI），包 `clipbridge_server/`
-- `ios/` — iOS App + 扩展（预留，尚未创建）
+- `ios/` — Xcode 27 工程 `ClipBridge.xcodeproj`（JSON 格式 `project.xcproj`）+ 三个 target 目录 + 本地 Swift Package `ClipBridgeKit/`
 - 远程仓库：github.com/k086-cloud/clipbridge（私有），分支 main
 
 ## Windows 端
@@ -40,13 +40,51 @@ Windows 电脑 ↔ iPhone 剪贴板同步。Windows 端 Python 服务 + iOS 键�
 - 防火墙：首次启动允许 Python 访问专用网络，或管理员执行 `netsh advfirewall firewall add rule name="ClipBridge 8765" dir=in action=allow protocol=TCP localport=8765`
 - PowerShell 5.1 下中文乱码靠响应头 charset=utf-8 解决，不要去掉
 
-## iOS 端计划（尚未开始）
-- SwiftUI 主 App（iOS 16+）：扫码配对 / 手动输入作为备用，"测试连接"按钮，引导用户开启键盘和"允许完全访问"
-- 键盘扩展：出现时拉 `/clip/history?limit=5` 显示卡片，点卡片用 `insertText` 插入；刷新按钮、"发送到电脑"按钮；必须有地球键；内存限制严，不引入大型第三方库
-- 共享扩展：选中文字 → 分享 → POST /clip（键盘跑通后再做）
-- 主 App 与扩展通过 App Group 共享 host/port/token（token 尽量放共享 Keychain）。先用免费 Apple ID（Personal Team）签名，若其不支持 App Group 要先明确说明并给替代方案
-- ATS 用 NSAllowsLocalNetworking 放行局域网 HTTP，不要全局关闭
-- 网络层封装成 `ClipBridgeClient`（async/await），主 App 和扩展共用，并给它和配对 URL 解析写单元测试
+## iOS 端
+
+### 现状（2026-11-03）
+- 阶段 0 完成：工程、三个 target、App Groups + Keychain Sharing 都已签名装到真机，codesign 实测 entitlements 正确。阶段 1 的 `ClipBridgeKit` 已写好、`swift test` 全过，**还没在 Xcode 里链接到三个 target**
+- 签名：免费 Apple ID（Personal Team，Team ID `L24ST657GM`）。描述文件 7 天过期（过期后重新 ⌘R 覆盖安装即可，键盘启用状态保留）；每周最多注册 10 个 App ID、每台设备最多 3 个 App（扩展可能也计数）
+- 真机：iPhone 17 Pro Max「char」，iOS 26.6.1。Xcode 27.2 只能给 iOS 17+ 的设备装调试包；部署目标 iOS 17.6（Xcode 27.2 能选的最低值）
+- 工程文件是 JSON 格式 `ios/ClipBridge.xcodeproj/project.xcproj`（不是 pbxproj），只有 Xcode 27+ 能打开；直接改它之前先看清格式，改完用 `xcodebuild -project ios/ClipBridge.xcodeproj -scheme ClipBridge -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build` 验证
+
+### Target 与 Bundle ID（已注册到 Personal Team，绝不要改名）
+- `ClipBridge`（主 App，SwiftUI）= `com.charleschen.ClipBridge`
+- `ClipBridgeKeyboard`（Custom Keyboard Extension）= `com.charleschen.ClipBridge.ClipBridgeKeyboard`
+- `ClipBridgeShare`（Share Extension）= `com.charleschen.ClipBridge.ClipBridgeShare`
+- 小写 `com.charleschen.clipbridge` 注册失败（Apple 判重不区分大小写），所以用了大写；只支持 iPhone（`TARGETED_DEVICE_FAMILY=1`，Designed for iPad 的 Mac/Vision 目标已关）
+
+### Capability（三个 target 都有，已实测签进包）
+- App Groups `group.com.charleschen.ClipBridge`（Personal Team + Xcode 27.2 实测可用，没有「Personal development teams do not support」报错）
+- Keychain Sharing `com.charleschen.clipbridge.shared`，运行时完整组名 `L24ST657GM.com.charleschen.clipbridge.shared`，前缀从各 target Info.plist 的 `AppIdentifierPrefix = $(AppIdentifierPrefix)` 读
+- 检查命令：`codesign -d --entitlements - --xml ~/Library/Developer/Xcode/DerivedData/ClipBridge-*/Build/Products/Debug-iphoneos/ClipBridge.app`（两个扩展在 `PlugIns/*.appex`）；描述文件 `security cms -D -i <bundle>/embedded.mobileprovision`
+
+### 配对信息存储（已定）
+- host/port 存 App Group 的 UserDefaults（键盘没开「允许完全访问」时按 Apple 文档仍可只读共享容器，能显示"已配对，待开启完全访问"）
+- token 存共享 Keychain：kSecClassGenericPassword，service `com.charleschen.clipbridge.pairing`，account `token`，`AfterFirstUnlockThisDeviceOnly`，先删后加
+- 封装在 `ClipBridgeKit.SharedPairingStore`：`load()` 返回 `PairingState`（notPaired / paired / tokenUnavailable(reason)），`save` 先写 Keychain 再写地址；真机用 `SharedPairingStore.live()`（Info.plist 缺 AppIdentifierPrefix 时返回 nil，不静默降级），测试和预览用 `.inMemory()`
+
+### ClipBridgeKit（`ios/ClipBridgeKit`，本地 Swift Package）
+- `swift-tools-version: 5.9`（Swift 5 语言模式，别升到 6——App target 默认 MainActor 隔离，跨模块会报一堆并发错误）；platforms iOS 17 / macOS 12（macOS 只为了 `swift test`）；只 import Foundation 和 Security，禁止 UIKit
+- 模块：`PairingInfo`/`PairingEndpoint`、`PairingURLParser`、`ClipItem`/`HistoryResponse`/`ClipBridgeJSON`、`ClipBridgeError`、`ClipBridgeClient`、`PairingStore`（协议 + `SharedPairingStore`、`UserDefaultsEndpointStore`、`InMemory*`）、`KeychainTokenStore`/`KeychainError`/`KeychainAccessGroup`、`ClipBridgeIdentifiers`
+- 客户端约定：任何 2xx 算成功；`latest()` 404 → nil（token 正确只是没内容）；`recentHistory(preferredLimit: 5)` 收到 422 退化成 limit=1（省略 limit 会拉全部，不能当兜底）；422 错误体是数组、其他是字符串；时间戳用 ISO8601DateFormatter 带毫秒；发送前本地拦空内容和 UTF-8 超 102400 字节；超时 3 s / 5 s；`transport(.notConnectedToInternet)` 多半是本地网络权限被拒，`.appTransportSecurityRequiresSecureConnection` 是 ATS 没放行
+- 测试：`cd ios/ClipBridgeKit && swift test`（网络用 MockURLProtocol，Keychain 用 InMemoryTokenStore；真 Keychain 在 macOS 命令行无签名跑不了，只在真机验证）。改 API 契约或存储逻辑必须补测试
+
+### Info.plist（已加）
+- 三个 target：`AppIdentifierPrefix = $(AppIdentifierPrefix)`、`NSAppTransportSecurity → NSAllowsLocalNetworking = YES`（ATS 对扩展也生效，不能只加主 App）
+- 主 App `ios/ClipBridge/Info.plist`（与生成的 Info.plist 合并；工程里用 membership-exceptions 把它排除出资源）：`NSLocalNetworkUsageDescription`（只放主 App，不放扩展）、`NSCameraUsageDescription`、URL scheme `clipbridge`
+- 键盘：`RequestsOpenAccess = YES`（否则没有「允许完全访问」开关，也没网络）
+- 共享扩展：`NSExtensionActivationRule` 仍是模板的 `TRUEPREDICATE`（构建有黄色警告），阶段 4 改成只接受文本
+
+### 已知坑
+- 本地网络权限按 App 记录、扩展继承；必须由主 App 前台先触发（「测试连接」）；iOS 18 起没有 NSLocalNetworkUsageDescription 弹窗不出现；被拒表现为 URLError -1009；模拟器不支持，只能真机测
+- 键盘没开完全访问时禁一切网络；Keychain 能否读 Apple 没写，以 `hasFullAccess` 为准，不用 Keychain 失败推断
+- 内存：键盘约 50–70 MB、共享扩展约 120 MB，超了静默被杀；键盘只显示截断文本
+- Xcode 27 新建工程默认创建嵌套 git 仓库，建工程时取消勾选（这次已删掉 ios/.git）
+- 服务端 `history?limit=` 超过 history_size 返回 422（建议服务端改成截断，单独 commit 并同步契约）
+
+### 后续阶段
+- 阶段 2 主 App（扫码 AVCaptureMetadataOutput / 手动输入、「测试连接」先 /health 再 /clip/latest 且 404 算成功、引导开键盘和完全访问）→ 阶段 3 键盘（hasFullAccess 判断、recentHistory 卡片、地球键）→ 阶段 4 共享扩展（激活规则改文本、POST 完成后再 completeRequest）→ 阶段 5 收尾
 
 ## 约定
 - 第一版只做纯文本；图片/文件、历史持久化、mDNS、HTTPS、开机自启、托盘图标都是后续
