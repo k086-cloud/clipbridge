@@ -4,8 +4,11 @@ import Security
 /// 读出来的配对状态。UI 按它决定显示什么：
 /// - notPaired：引导去主 App 配对
 /// - paired：正常工作
-/// - tokenUnavailable：App Group 里有地址但 Keychain 读不到 token。键盘没开「允许完全访问」、
-///   设备还没首次解锁、entitlement 不匹配，都落在这里，由 reason 区分。
+/// - tokenUnavailable：App Group 里有地址但 Keychain 里的 token 读不到。由 reason 区分：
+///   - itemNotFound：条目不存在。注意按 Apple 文档，**查询**一个本 target 无权访问的 access group 也是这个码
+///     （-34018 只在写入/删除时出现），所以在只读的扩展里它也可能意味着 entitlement 配错了
+///   - interactionNotAllowed：设备还没首次解锁
+///   - notAvailable：没有可用的 Keychain（社区报告：键盘没开「允许完全访问」）
 public enum PairingState: Equatable, Sendable {
     case notPaired
     case paired(PairingInfo)
@@ -45,7 +48,7 @@ public struct SharedPairingStore: PairingStore {
     }
 
     /// 真机上的默认组合：App Group 存地址，共享 Keychain 存 token。
-    /// Info.plist 没有 AppIdentifierPrefix、或 App Group 的 UserDefaults 建不出来时返回 nil——
+    /// Info.plist 没有 AppIdentifierPrefix、或没有 App Group entitlement 时返回 nil——
     /// 这两种都是工程配置错误，不该在运行时静默降级。
     public static func live(bundle: Bundle = .main) -> SharedPairingStore? {
         guard let accessGroup = KeychainAccessGroup.shared(bundle: bundle),
@@ -90,9 +93,10 @@ public struct SharedPairingStore: PairingStore {
         endpoints.save(info.endpoint)
     }
 
+    /// 和 save 对称：先删 Keychain，失败就不动地址，重试即可（clearToken 把「本来就没有」当成功）。
     public func clear() throws {
-        endpoints.clearEndpoint()
         try tokens.clearToken()
+        endpoints.clearEndpoint()
     }
 }
 
@@ -109,17 +113,18 @@ public final class UserDefaultsEndpointStore: EndpointStore, @unchecked Sendable
         self.defaults = defaults
     }
 
-    /// `UserDefaults(suiteName:)` 在没有对应 App Group entitlement 时返回的是一个无法共享的实例，
-    /// 在 suite 名非法时返回 nil；两种情况都只会出现在工程配置错误时。
+    /// 没有对应 App Group entitlement 时 `UserDefaults(suiteName:)` 不会返回 nil，而是给一个不共享的实例并只在控制台警告；
+    /// 所以先用 `containerURL(forSecurityApplicationGroupIdentifier:)` 探测 entitlement，缺了就明确返回 nil。
     public convenience init?(appGroup: String) {
-        guard let defaults = UserDefaults(suiteName: appGroup) else {
+        guard FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroup) != nil,
+              let defaults = UserDefaults(suiteName: appGroup) else {
             return nil
         }
         self.init(defaults: defaults)
     }
 
     public func loadEndpoint() -> PairingEndpoint? {
-        guard let host = defaults.string(forKey: Self.hostKey), !host.isEmpty else {
+        guard let host = defaults.string(forKey: Self.hostKey), PairingEndpoint.isValidHost(host) else {
             return nil
         }
         let port = defaults.integer(forKey: Self.portKey)

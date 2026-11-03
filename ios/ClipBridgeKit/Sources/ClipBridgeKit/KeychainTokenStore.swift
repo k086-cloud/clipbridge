@@ -3,11 +3,13 @@ import Security
 
 /// Keychain 的 OSStatus 按 UI 需要区分的几种情况分型。
 public enum KeychainError: Error, Equatable, Sendable {
-    /// -25300：没有这条。
+    /// -25300：没有这条。按 Apple 文档，查询一个本 target 无权访问的 access group 也返回这个码
+    /// （不是 -34018），所以在只读的扩展里它也可能意味着 entitlement 配错了。
     case itemNotFound
     /// -25308：设备还没首次解锁，或条目的可访问级别比当前状态高。
     case interactionNotAllowed
-    /// -34018：access group 和 entitlement 不匹配（组名拼错、Team ID 前缀不对、target 少加了 capability）。
+    /// -34018：只在 SecItemAdd / SecItemDelete（save / clearToken）出现：指定的 access group 不在本 target 的
+    /// entitlement 里（组名拼错、Team ID 前缀不对、少加了 capability）。
     case missingEntitlement
     /// -25291：没有可用的 Keychain。社区报告键盘没开「允许完全访问」时是这个。
     case notAvailable

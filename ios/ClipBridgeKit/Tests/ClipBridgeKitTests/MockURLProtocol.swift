@@ -16,9 +16,10 @@ final class MockURLProtocol: URLProtocol {
         var query: String? { url.query }
     }
 
+    // 由 lock 保护；标 nonisolated(unsafe) 是为了将来切到 Swift 6 模式也能编译。
     private static let lock = NSLock()
-    private static var storedHandler: Handler?
-    private static var storedRequests: [RecordedRequest] = []
+    private nonisolated(unsafe) static var storedHandler: Handler?
+    private nonisolated(unsafe) static var storedRequests: [RecordedRequest] = []
 
     static var handler: Handler? {
         get { lock.lock(); defer { lock.unlock() }; return storedHandler }

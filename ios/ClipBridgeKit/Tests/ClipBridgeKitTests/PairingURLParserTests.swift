@@ -89,9 +89,17 @@ final class PairingURLParserTests: XCTestCase {
     }
 
     func testRejectsGarbage() {
-        for text in ["", "   ", "not a url at all", "pair?host=1&port=2&token=3"] {
+        // iOS 17+/macOS 14+ 的 URLComponents 很宽松：没有 scheme 的文本会被当成相对路径解析成功，落到 wrongScheme(nil)
+        let cases: [(String, PairingURLError)] = [
+            ("", .notAURL),
+            ("   ", .notAURL),
+            ("http://[bad", .notAURL),
+            ("not a url at all", .wrongScheme(nil)),
+            ("pair?host=1&port=2&token=3", .wrongScheme(nil)),
+        ]
+        for (text, expected) in cases {
             XCTAssertThrowsError(try PairingURLParser.parse(text), "input: \(text)") { error in
-                XCTAssertTrue(error is PairingURLError, "input: \(text) threw \(error)")
+                XCTAssertEqual(error as? PairingURLError, expected, "input: \(text)")
             }
         }
     }

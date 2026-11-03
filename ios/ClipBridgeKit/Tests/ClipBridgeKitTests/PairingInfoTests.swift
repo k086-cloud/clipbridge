@@ -27,6 +27,31 @@ final class PairingInfoTests: XCTestCase {
         XCTAssertEqual(PairingEndpoint(host: "fe80::1", port: 8765).baseURL.absoluteString, "http://[fe80::1]:8765")
     }
 
+    func testInvalidEndpointNeverCrashesAndPointsNowhere() {
+        // 值类型本身不校验；非法值的 baseURL 指向保留域名，请求会明确失败而不是打到别的地方
+        for endpoint in [
+            PairingEndpoint(host: "", port: 8765),
+            PairingEndpoint(host: "a b/c", port: 99999),
+            PairingEndpoint(host: "192.168.1.10", port: 0),
+            PairingEndpoint(host: "user@pc", port: 1),
+        ] {
+            XCTAssertFalse(endpoint.isValid, "\(endpoint)")
+            XCTAssertEqual(endpoint.baseURL.absoluteString, "http://invalid.invalid:1", "\(endpoint)")
+        }
+        XCTAssertTrue(PairingEndpoint(host: "192.168.1.10", port: 8765).isValid)
+    }
+
+    func testDecodingDoesNotValidateSoCallersMust() throws {
+        // 契约：Codable 不校验，校验在边界（URL 解析、手动输入、存储读取）。这里把这个行为钉住。
+        let decoded = try JSONDecoder().decode(PairingInfo.self, from: json(#"{"host":"","port":0,"token":""}"#))
+        XCTAssertFalse(decoded.endpoint.isValid)
+        XCTAssertFalse(PairingEndpoint.isValidHost(decoded.host))
+        XCTAssertFalse(PairingEndpoint.isValidPort(decoded.port))
+
+        XCTAssertThrowsError(try JSONDecoder().decode(PairingInfo.self, from: json(#"{"host":"h","port":"8765","token":"t"}"#)))
+        XCTAssertThrowsError(try JSONDecoder().decode(PairingInfo.self, from: json(#"{"host":"h","port":8765}"#)))
+    }
+
     func testHostValidation() {
         XCTAssertTrue(PairingEndpoint.isValidHost("192.168.1.10"))
         XCTAssertTrue(PairingEndpoint.isValidHost("my-pc.local"))

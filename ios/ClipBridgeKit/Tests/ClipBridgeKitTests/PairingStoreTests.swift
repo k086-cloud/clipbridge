@@ -5,6 +5,18 @@ import Security
 final class PairingStoreTests: XCTestCase {
     private let info = PairingInfo(host: "192.168.1.10", port: 8765, token: "tok")
 
+    /// 独立的 UserDefaults suite，并在用完后删掉 ~/Library/Preferences 里的 plist（removePersistentDomain 只清内容不删文件）。
+    private func makeDefaults() throws -> UserDefaults {
+        let suite = "clipbridge.tests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock {
+            defaults.removePersistentDomain(forName: suite)
+            let plist = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Preferences/\(suite).plist")
+            try? FileManager.default.removeItem(at: plist)
+        }
+        return defaults
+    }
+
     func testEmptyStoreIsNotPaired() {
         XCTAssertEqual(SharedPairingStore.inMemory().load(), .notPaired)
     }
@@ -19,10 +31,25 @@ final class PairingStoreTests: XCTestCase {
         XCTAssertEqual(SharedPairingStore.inMemory(info).load(), .paired(info))
     }
 
-    func testClearRemovesEverything() throws {
-        let store = SharedPairingStore.inMemory(info)
+    func testClearRemovesEndpointAndToken() throws {
+        let endpoints = InMemoryEndpointStore(endpoint: info.endpoint)
+        let tokens = InMemoryTokenStore(token: "tok")
+        let store = SharedPairingStore(endpoints: endpoints, tokens: tokens)
         try store.clear()
         XCTAssertEqual(store.load(), .notPaired)
+        XCTAssertNil(endpoints.loadEndpoint())
+        XCTAssertNil(try tokens.loadToken())
+    }
+
+    func testClearLeavesEndpointUntouchedWhenKeychainFails() {
+        // 和 save 对称：Keychain 删不掉就不动地址，UI 继续显示已配对，用户可以重试
+        let endpoints = InMemoryEndpointStore(endpoint: info.endpoint)
+        let tokens = InMemoryTokenStore(token: "tok", failure: .notAvailable)
+        let store = SharedPairingStore(endpoints: endpoints, tokens: tokens)
+        XCTAssertThrowsError(try store.clear()) { error in
+            XCTAssertEqual(error as? KeychainError, .notAvailable)
+        }
+        XCTAssertEqual(endpoints.loadEndpoint(), info.endpoint)
     }
 
     func testEndpointWithoutTokenReportsItemNotFound() {
@@ -63,11 +90,7 @@ final class PairingStoreTests: XCTestCase {
     }
 
     func testUserDefaultsEndpointStoreRoundTrip() throws {
-        let suite = "clipbridge.tests.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
-
-        let store = UserDefaultsEndpointStore(defaults: defaults)
+        let store = UserDefaultsEndpointStore(defaults: try makeDefaults())
         XCTAssertNil(store.loadEndpoint())
         XCTAssertNil(store.pairedAt)
 
@@ -81,12 +104,21 @@ final class PairingStoreTests: XCTestCase {
     }
 
     func testUserDefaultsEndpointStoreIgnoresCorruptPort() throws {
-        let suite = "clipbridge.tests.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
+        let defaults = try makeDefaults()
         defaults.set("pc.local", forKey: UserDefaultsEndpointStore.hostKey)
         defaults.set(0, forKey: UserDefaultsEndpointStore.portKey)
         XCTAssertNil(UserDefaultsEndpointStore(defaults: defaults).loadEndpoint())
+        defaults.set(70000, forKey: UserDefaultsEndpointStore.portKey)
+        XCTAssertNil(UserDefaultsEndpointStore(defaults: defaults).loadEndpoint())
+    }
+
+    func testUserDefaultsEndpointStoreIgnoresCorruptHost() throws {
+        for bad in ["evil.com/path", "192.168.1. 5", " 192.168.1.5", "user@pc", "[fe80::1]", ""] {
+            let defaults = try makeDefaults()
+            defaults.set(bad, forKey: UserDefaultsEndpointStore.hostKey)
+            defaults.set(8765, forKey: UserDefaultsEndpointStore.portKey)
+            XCTAssertNil(UserDefaultsEndpointStore(defaults: defaults).loadEndpoint(), "host: \(bad)")
+        }
     }
 
     func testKeychainErrorStatusMapping() {

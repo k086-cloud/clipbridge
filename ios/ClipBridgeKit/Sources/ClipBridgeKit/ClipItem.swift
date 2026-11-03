@@ -30,6 +30,48 @@ public struct HistoryResponse: Codable, Equatable, Sendable {
     }
 }
 
+/// `GET /health` 的响应。能解出来就说明对面确实是 ClipBridge 服务，而不是随便一个返回 200 的 HTTP 服务。
+/// `maxTextBytes` / `historySize` 从服务端 0.2.0 起才有，旧服务端解出来是 nil。
+public struct HealthResponse: Codable, Equatable, Sendable {
+    public let status: String
+    public let version: String
+    public let historyItems: Int
+    public let monitorRunning: Bool
+    public let uptimeSeconds: Double
+    public let maxTextBytes: Int?
+    public let historySize: Int?
+
+    private enum CodingKeys: String, CodingKey {
+        case status
+        case version
+        case historyItems = "history_items"
+        case monitorRunning = "monitor_running"
+        case uptimeSeconds = "uptime_seconds"
+        case maxTextBytes = "max_text_bytes"
+        case historySize = "history_size"
+    }
+
+    public init(
+        status: String,
+        version: String,
+        historyItems: Int,
+        monitorRunning: Bool,
+        uptimeSeconds: Double,
+        maxTextBytes: Int? = nil,
+        historySize: Int? = nil
+    ) {
+        self.status = status
+        self.version = version
+        self.historyItems = historyItems
+        self.monitorRunning = monitorRunning
+        self.uptimeSeconds = uptimeSeconds
+        self.maxTextBytes = maxTextBytes
+        self.historySize = historySize
+    }
+
+    public var isOK: Bool { status == "ok" }
+}
+
 /// 和服务端约定一致的 JSON 编解码器。
 /// JSONDecoder 自带的 .iso8601 策略不认小数秒，所以日期用 ISO8601DateFormatter 手动解析。
 public enum ClipBridgeJSON {

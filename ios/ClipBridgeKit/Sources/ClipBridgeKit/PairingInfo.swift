@@ -1,6 +1,9 @@
 import Foundation
 
 /// 电脑端服务的地址。单独成类型，因为它和 token 存在不同的地方（App Group vs Keychain）。
+///
+/// 这是不校验的纯值类型（Codable 也不校验）：校验放在边界——配对 URL 解析、手动输入表单、从存储读出时——
+/// 都要先过 `isValidHost` / `isValidPort`（或直接看 `isValid`）。
 public struct PairingEndpoint: Codable, Equatable, Hashable, Sendable {
     public var host: String
     public var port: Int
@@ -21,15 +24,21 @@ public struct PairingEndpoint: Codable, Equatable, Hashable, Sendable {
         (1...65535).contains(port)
     }
 
+    public var isValid: Bool {
+        Self.isValidHost(host) && Self.isValidPort(port)
+    }
+
     /// `http://host:port`；IPv6 字面量自动加方括号。
+    /// 非法的 host/port 永远不会崩溃，而是指向 `invalid.invalid`（保留域名，解析必然失败）——
+    /// 请求会以明确的网络错误结束，而不是打到别的地方。
     public var baseURL: URL {
-        let hostPart = host.contains(":") ? "[\(host)]" : host
-        if let url = URL(string: "http://\(hostPart):\(port)") {
-            return url
+        if isValid {
+            let hostPart = host.contains(":") ? "[\(host)]" : host
+            if let url = URL(string: "http://\(hostPart):\(port)") {
+                return url
+            }
         }
-        // host 含非法字符时百分号编码再试；这种值本不该被存下来（解析和输入都会先校验）。
-        let encoded = host.addingPercentEncoding(withAllowedCharacters: .urlHostAllowed) ?? "invalid"
-        return URL(string: "http://\(encoded):\(port)")!
+        return URL(string: "http://invalid.invalid:1")!
     }
 }
 

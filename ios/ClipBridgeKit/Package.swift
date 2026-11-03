@@ -5,8 +5,9 @@ import PackageDescription
 
 let package = Package(
     name: "ClipBridgeKit",
-    // macOS 12 只是为了在 Mac 上直接 `swift test`（async 版 URLSession 需要 macOS 12+）；App 本身是 iOS 17.6。
-    platforms: [.iOS(.v17), .macOS(.v12)],
+    // macOS 条目只是为了在 Mac 上直接 `swift test`；Swift 6.4 工具链本身就要求 macOS 14，写低了也会被抬到 14。
+    // App 本身是 iOS 17.6。
+    platforms: [.iOS(.v17), .macOS(.v14)],
     products: [
         .library(name: "ClipBridgeKit", targets: ["ClipBridgeKit"]),
     ],
