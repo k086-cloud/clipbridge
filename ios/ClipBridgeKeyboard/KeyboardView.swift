@@ -1,7 +1,8 @@
 import ClipBridgeKit
 import UIKit
 
-/// 键盘的整个界面：顶部状态行，中间卡片列表（或一条说明文字），底部一排按键。纯 UIKit，没有图片资源。
+/// 键盘的整个界面：顶部状态行（固定 20 pt），中间卡片列表（或一条说明文字，唯一可伸缩的一行），底部一排按键（44 pt）。
+/// 纯 UIKit，没有图片资源。
 final class KeyboardView: UIView {
     var onCardTap: ((ClipItem) -> Void)?
     var onRefresh: (() -> Void)?
@@ -13,7 +14,7 @@ final class KeyboardView: UIView {
     let statusLabel = UILabel()
 
     private let spinner = UIActivityIndicatorView(style: .medium)
-    private let scrollView = UIScrollView()
+    private let scrollView = CardScrollView()
     private let cardStack = UIStackView()
     private let messageLabel = UILabel()
     private let backspaceButton = KeyboardView.makeKey(symbol: "delete.left", label: "删除")
@@ -48,13 +49,15 @@ final class KeyboardView: UIView {
 
     func show(items: [ClipItem]) {
         messageLabel.isHidden = true
+        messageLabel.text = nil
         scrollView.isHidden = false
         for view in cardStack.arrangedSubviews {
             cardStack.removeArrangedSubview(view)
             view.removeFromSuperview()
         }
+        let now = Date()
         for item in items {
-            let card = ClipCardButton(item: item)
+            let card = ClipCardButton(item: item, now: now)
             card.addAction(UIAction { [weak self, weak card] _ in
                 guard let item = card?.item else { return }
                 self?.onCardTap?(item)
@@ -79,7 +82,7 @@ final class KeyboardView: UIView {
     private func build() {
         backgroundColor = .systemGroupedBackground
 
-        statusLabel.font = .preferredFont(forTextStyle: .caption1)
+        statusLabel.font = Self.scaledFont(.caption1, base: 12, max: 18)
         statusLabel.textColor = .secondaryLabel
         statusLabel.numberOfLines = 1
         statusLabel.lineBreakMode = .byTruncatingTail
@@ -91,6 +94,8 @@ final class KeyboardView: UIView {
         statusRow.axis = .horizontal
         statusRow.spacing = 6
         statusRow.alignment = .center
+        // 固定高度：否则这一行会吃掉所有多余高度，卡片区域被压成 0 pt（无头布局实测）。
+        statusRow.heightAnchor.constraint(equalToConstant: 20).isActive = true
 
         cardStack.axis = .vertical
         cardStack.spacing = 6
@@ -106,24 +111,30 @@ final class KeyboardView: UIView {
             cardStack.widthAnchor.constraint(equalTo: scrollView.frameLayoutGuide.widthAnchor),
         ])
 
-        messageLabel.font = .preferredFont(forTextStyle: .subheadline)
+        messageLabel.font = Self.scaledFont(.subheadline, base: 15, max: 21)
         messageLabel.textColor = .secondaryLabel
         messageLabel.numberOfLines = 0
         messageLabel.textAlignment = .center
         messageLabel.isHidden = true
 
+        // 中间这块是唯一可伸缩的一行：滚动视图铺满；说明文字只居中，不决定高度。
         let center = UIView()
         center.translatesAutoresizingMaskIntoConstraints = false
-        for subview in [scrollView, messageLabel] {
-            subview.translatesAutoresizingMaskIntoConstraints = false
-            center.addSubview(subview)
-            NSLayoutConstraint.activate([
-                subview.topAnchor.constraint(equalTo: center.topAnchor),
-                subview.bottomAnchor.constraint(equalTo: center.bottomAnchor),
-                subview.leadingAnchor.constraint(equalTo: center.leadingAnchor),
-                subview.trailingAnchor.constraint(equalTo: center.trailingAnchor),
-            ])
-        }
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        messageLabel.translatesAutoresizingMaskIntoConstraints = false
+        center.addSubview(scrollView)
+        center.addSubview(messageLabel)
+        NSLayoutConstraint.activate([
+            scrollView.topAnchor.constraint(equalTo: center.topAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: center.bottomAnchor),
+            scrollView.leadingAnchor.constraint(equalTo: center.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: center.trailingAnchor),
+            messageLabel.centerYAnchor.constraint(equalTo: center.centerYAnchor),
+            messageLabel.topAnchor.constraint(greaterThanOrEqualTo: center.topAnchor),
+            messageLabel.bottomAnchor.constraint(lessThanOrEqualTo: center.bottomAnchor),
+            messageLabel.leadingAnchor.constraint(equalTo: center.leadingAnchor, constant: 8),
+            messageLabel.trailingAnchor.constraint(equalTo: center.trailingAnchor, constant: -8),
+        ])
 
         refreshButton.addAction(UIAction { [weak self] _ in self?.onRefresh?() }, for: .touchUpInside)
         sendButton.addAction(UIAction { [weak self] _ in self?.onSend?() }, for: .touchUpInside)
@@ -135,7 +146,10 @@ final class KeyboardView: UIView {
         bar.spacing = 6
         bar.distribution = .fill
         for key in [globeButton, refreshButton, backspaceButton] {
-            key.widthAnchor.constraint(equalToConstant: 48).isActive = true
+            // 999 而不是 required：地球键隐藏时 UIStackView 会给它加一条 required 的 width == 0，必须让这条让路。
+            let width = key.widthAnchor.constraint(equalToConstant: 48)
+            width.priority = UILayoutPriority(999)
+            width.isActive = true
         }
         spaceButton.setContentHuggingPriority(.defaultLow, for: .horizontal)
         sendButton.setContentHuggingPriority(.defaultLow, for: .horizontal)
@@ -155,6 +169,11 @@ final class KeyboardView: UIView {
         ])
     }
 
+    /// 跟随动态字体但封顶：键盘高度和按键高度是固定的，字再大就放不下了。
+    static func scaledFont(_ style: UIFont.TextStyle, base: CGFloat, max: CGFloat) -> UIFont {
+        UIFontMetrics(forTextStyle: style).scaledFont(for: .systemFont(ofSize: base), maximumPointSize: max)
+    }
+
     private static func makeKey(symbol: String?, label: String, showsLabel: Bool = false) -> UIButton {
         var configuration = UIButton.Configuration.filled()
         configuration.baseBackgroundColor = .secondarySystemGroupedBackground
@@ -168,13 +187,21 @@ final class KeyboardView: UIView {
             configuration.title = label
             configuration.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { attributes in
                 var attributes = attributes
-                attributes.font = UIFont.preferredFont(forTextStyle: .subheadline)
+                attributes.font = KeyboardView.scaledFont(.subheadline, base: 15, max: 21)
                 return attributes
             }
         }
         let button = UIButton(configuration: configuration)
         button.accessibilityLabel = label
         return button
+    }
+}
+
+/// 卡片是 UIControl，而 UIScrollView 默认不打断 UIControl 的触摸：按住卡片超过 150 ms 再拖，列表就滚不动。
+/// 允许滚动开始时取消卡片的触摸；delaysContentTouches 保持默认，点按仍会高亮。
+private final class CardScrollView: UIScrollView {
+    override func touchesShouldCancel(in view: UIView) -> Bool {
+        true
     }
 }
 
@@ -189,10 +216,11 @@ final class ClipCardButton: UIControl {
         let formatter = RelativeDateTimeFormatter()
         formatter.locale = Locale(identifier: "zh_CN")
         formatter.unitsStyle = .short
+        formatter.dateTimeStyle = .named
         return formatter
     }()
 
-    init(item: ClipItem) {
+    init(item: ClipItem, now: Date) {
         self.item = item
         super.init(frame: .zero)
         backgroundColor = .secondarySystemGroupedBackground
@@ -201,16 +229,17 @@ final class ClipCardButton: UIControl {
         isAccessibilityElement = true
         accessibilityTraits = .button
 
-        previewLabel.font = .preferredFont(forTextStyle: .subheadline)
+        previewLabel.font = KeyboardView.scaledFont(.subheadline, base: 15, max: 21)
         previewLabel.textColor = .label
         previewLabel.numberOfLines = 3
         previewLabel.lineBreakMode = .byTruncatingTail
         previewLabel.text = Self.preview(of: item.content)
 
-        metaLabel.font = .preferredFont(forTextStyle: .caption2)
+        metaLabel.font = KeyboardView.scaledFont(.caption2, base: 11, max: 17)
         metaLabel.textColor = .secondaryLabel
         let source = item.source == .pc ? "电脑" : "手机"
-        let when = Self.relativeFormatter.localizedString(for: item.timestamp, relativeTo: Date())
+        // 时间以手机时钟为准；电脑时钟走快时不显示「N 秒后」，一律当作「现在」。
+        let when = Self.relativeFormatter.localizedString(for: min(item.timestamp, now), relativeTo: now)
         metaLabel.text = "\(source) · \(when) · \(item.content.count) 字符"
         accessibilityLabel = "\(metaLabel.text ?? "")，\(previewLabel.text ?? "")"
 

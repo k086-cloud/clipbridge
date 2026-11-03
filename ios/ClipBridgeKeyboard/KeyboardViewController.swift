@@ -11,8 +11,11 @@ import os
 /// 键盘进程内存很紧（社区实测约 50–70 MB 就会被静默杀掉），所以只用 UIKit、只保留 5 条、不缓存任何东西。
 final class KeyboardViewController: UIInputViewController {
     private static let preferredItemCount = 5
-    private static let keyboardHeight: CGFloat = 280
+    /// 键盘跟随宿主 App 的方向（备忘录、Safari 都能横屏），横屏时 440 pt 高的屏幕放不下 280 pt。
+    private static let portraitHeight: CGFloat = 280
+    private static let landscapeHeight: CGFloat = 190
     private static let flashDuration: TimeInterval = 2.5
+    private static let errorFlashDuration: TimeInterval = 6
 
     private let keyboardView = KeyboardView()
     private let logger = Logger(subsystem: "com.charleschen.ClipBridge", category: "keyboard")
@@ -58,17 +61,22 @@ final class KeyboardViewController: UIInputViewController {
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
+        // 键盘进程会活很久，视图也不会重建：取消任务的同时把界面复位，别留下转圈或灰掉的发送键。
         loadTask?.cancel()
         loadTask = nil
         sendTask?.cancel()
         sendTask = nil
         flashWorkItem?.cancel()
         flashWorkItem = nil
+        keyboardView.setLoading(false)
+        keyboardView.setSending(false)
+        restoreStatus()
     }
 
     override func viewWillLayoutSubviews() {
         // Face ID 机型系统自己在键盘下方画地球键，这时 needsInputModeSwitchKey 为 false
         keyboardView.globeButton.isHidden = !needsInputModeSwitchKey
+        heightConstraint?.constant = preferredHeight
         super.viewWillLayoutSubviews()
     }
 
@@ -76,11 +84,19 @@ final class KeyboardViewController: UIInputViewController {
         applyAppearance()
     }
 
+    /// 横屏（竖向 compact）用矮的；只支持 iPhone，所以宽度判断是兜底。
+    private var preferredHeight: CGFloat {
+        if traitCollection.verticalSizeClass == .compact || view.bounds.width > 600 {
+            return Self.landscapeHeight
+        }
+        return Self.portraitHeight
+    }
+
     /// 键盘视图默认是透明的，高度也要自己给；优先级 999 避免和系统的约束冲突时直接崩。
     private func installHeightConstraintIfNeeded() {
         guard heightConstraint == nil else { return }
         inputView?.allowsSelfSizing = true
-        let constraint = view.heightAnchor.constraint(equalToConstant: Self.keyboardHeight)
+        let constraint = view.heightAnchor.constraint(equalToConstant: preferredHeight)
         constraint.priority = UILayoutPriority(999)
         constraint.isActive = true
         heightConstraint = constraint
@@ -159,15 +175,27 @@ final class KeyboardViewController: UIInputViewController {
 
     // MARK: - 手机剪贴板 → 电脑
 
-    /// 键盘拿不到完整的文档内容，所以这里发的是手机剪贴板（需要完全访问；iOS 16 起系统会弹一次「允许粘贴」）。
-    /// 手机 → 电脑的主路径仍然是共享扩展。
+    /// 键盘拿不到完整的文档内容，所以这里发的是手机剪贴板（需要完全访问）。
+    /// iOS 16 起程序化读取剪贴板会弹系统的「允许粘贴」：设置里是「询问」时每次新内容都会问；
+    /// 设置 → ClipBridge → 从其他 App 粘贴 → 允许 可以关掉询问。手机 → 电脑的主路径仍然是共享扩展。
     private func sendClipboard() {
         guard let pairing else {
             flash("先配对并开启完全访问")
             return
         }
-        guard UIPasteboard.general.hasStrings, let text = UIPasteboard.general.string, !text.isEmpty else {
+        let pasteboard = UIPasteboard.general
+        guard pasteboard.hasStrings else {
+            // 只查元数据，不会弹窗
             flash("手机剪贴板里没有文字")
+            return
+        }
+        // 这一行会弹系统「允许粘贴」并阻塞到用户回答；拒绝（或 Universal Clipboard 取不到）时返回 nil
+        guard let text = pasteboard.string else {
+            flash("读不到剪贴板：若刚才点了「不允许粘贴」，到 设置 → ClipBridge → 从其他 App 粘贴 选「允许」", isError: true)
+            return
+        }
+        guard !text.isEmpty else {
+            flash("手机剪贴板里只有空文本")
             return
         }
         sendTask?.cancel()
@@ -182,7 +210,8 @@ final class KeyboardViewController: UIInputViewController {
             } catch {
                 guard let self, !Task.isCancelled else { return }
                 keyboardView.setSending(false)
-                flash(Self.message(for: error))
+                // 状态行只有一行，用短文案；详细指引在卡片区的错误提示里
+                flash("发送失败：\(error.localizedDescription)", isError: true)
             }
         }
     }
@@ -191,6 +220,7 @@ final class KeyboardViewController: UIInputViewController {
 
     private func setStatus(_ text: String) {
         currentStatus = text
+        keyboardView.statusLabel.textColor = .secondaryLabel
         keyboardView.statusLabel.text = text
     }
 
@@ -199,16 +229,21 @@ final class KeyboardViewController: UIInputViewController {
         setStatus("")
     }
 
-    /// 临时显示一条反馈，几秒后恢复原状态。
-    private func flash(_ text: String) {
+    /// 临时显示一条反馈，几秒后恢复原状态；错误用红色、显示更久。
+    private func flash(_ text: String, isError: Bool = false) {
         flashWorkItem?.cancel()
+        keyboardView.statusLabel.textColor = isError ? .systemRed : .secondaryLabel
         keyboardView.statusLabel.text = text
         let restore = DispatchWorkItem { [weak self] in
-            guard let self else { return }
-            keyboardView.statusLabel.text = currentStatus
+            self?.restoreStatus()
         }
         flashWorkItem = restore
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.flashDuration, execute: restore)
+        DispatchQueue.main.asyncAfter(deadline: .now() + (isError ? Self.errorFlashDuration : Self.flashDuration), execute: restore)
+    }
+
+    private func restoreStatus() {
+        keyboardView.statusLabel.textColor = .secondaryLabel
+        keyboardView.statusLabel.text = currentStatus
     }
 
     private static func message(for error: Error) -> String {
