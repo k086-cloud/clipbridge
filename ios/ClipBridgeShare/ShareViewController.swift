@@ -6,21 +6,26 @@
 import ClipBridgeKit
 import UIKit
 import UniformTypeIdentifiers
+import os
 
 /// 手机 → 电脑：在任何 App 里选中文字 → 分享 → ClipBridge，文字 POST /clip 写进电脑剪贴板。
 /// 共享扩展没有「允许完全访问」这种限制；本地网络权限继承主 App。
 /// 必须等 POST 完成再 completeRequest：调用后进程立即被回收，没发完的请求会被取消。
 final class ShareViewController: UIViewController {
     private enum ShareError: LocalizedError {
-        case noText
+        case noText(types: [String])
         case notPaired
         case misconfigured
 
         var errorDescription: String? {
             switch self {
-            case .noText: return "分享的内容里没有文字（只支持纯文本）"
-            case .notPaired: return "尚未配对。先打开 ClipBridge App，扫描电脑终端里的二维码。"
-            case .misconfigured: return "工程配置错误：读不到配对信息（AppIdentifierPrefix / App Group entitlement）。"
+            case let .noText(types):
+                let list = types.isEmpty ? "无" : types.joined(separator: ", ")
+                return "分享的内容里没有可用的纯文字，没有发送。\n附件类型：\(list)"
+            case .notPaired:
+                return "尚未配对。先打开 ClipBridge App，扫描电脑终端里的二维码。"
+            case .misconfigured:
+                return "工程配置错误：读不到配对信息（AppIdentifierPrefix / App Group entitlement）。"
             }
         }
     }
@@ -28,6 +33,7 @@ final class ShareViewController: UIViewController {
     /// 分享面板里多等一会儿没关系，别用键盘那套 3 秒超时。
     private static let session = ClipBridgeClient.makeSession(requestTimeout: 8, resourceTimeout: 12)
     private static let successDismissDelay: TimeInterval = 0.8
+    private static let logger = Logger(subsystem: "com.charleschen.ClipBridge", category: "share")
 
     private let pairingStore: (any PairingStore)? = SharedPairingStore.live()
 
@@ -62,7 +68,7 @@ final class ShareViewController: UIViewController {
                 await send(text)
             } catch {
                 guard !Task.isCancelled else { return }
-                fail(error.localizedDescription, hint: nil, retryable: false)
+                fail(error.localizedDescription, hint: "只支持分享纯文字（选中文字 → 分享）。", retryable: false)
             }
         }
     }
@@ -143,32 +149,75 @@ final class ShareViewController: UIViewController {
 
     // MARK: - 取分享的文字
 
-    /// 依次尝试：public.plain-text 的 Data → 富文本（NSAttributedString）→ NSExtensionItem 自带的 attributedContentText。
-    /// 用 loadDataRepresentation / loadObject 而不是 loadItem（后者在 iOS 27 SDK 里已标记到期）。
+    /// 每个附件依次尝试，拿到非空文字就用；全部失败才报错（错误里带附件类型，便于排查）。
+    /// 顺序：① loadObject(NSString)——系统按 NSItemProviderReading 规则给 String；
+    /// ② loadItem(forTypeIdentifier: public.plain-text)——按 Apple 的强制转换规则给 String / NSAttributedString / Data；
+    /// ③ loadObject(NSAttributedString)——富文本取 .string；
+    /// ④ loadDataRepresentation——原始 Data，必须是合法 UTF-8 或能解开的归档，二进制一律不当文本（2026-11-04 的乱码 bug）；
+    /// ⑤ NSExtensionItem.attributedContentText。
     private static func extractText(from inputItems: [Any]) async throws -> String {
+        var seenTypes: [String] = []
         for item in inputItems.compactMap({ $0 as? NSExtensionItem }) {
             for provider in item.attachments ?? [] {
-                if provider.hasItemConformingToTypeIdentifier(UTType.plainText.identifier) {
-                    let data = try await provider.loadData(for: .plainText)
-                    if let text = decodeText(data), !text.isEmpty {
-                        return text
+                let types = provider.registeredTypeIdentifiers
+                seenTypes.append(contentsOf: types)
+                logger.info("attachment registeredTypeIdentifiers: \(types.joined(separator: ", "), privacy: .public)")
+
+                if provider.canLoadObject(ofClass: NSString.self) {
+                    do {
+                        if let text = try await provider.loadString(), let ok = SharedTextDecoder.nonEmpty(text) {
+                            logger.info("text via loadObject(NSString), \(ok.count) chars")
+                            return ok
+                        }
+                    } catch {
+                        logger.info("loadObject(NSString) failed: \(String(describing: error), privacy: .public)")
                     }
                 }
-                if provider.hasItemConformingToTypeIdentifier(UTType.text.identifier) {
-                    if let attributed = try await provider.loadAttributedString(), !attributed.string.isEmpty {
-                        return attributed.string
+
+                if provider.hasItemConformingToTypeIdentifier(UTType.plainText.identifier) {
+                    do {
+                        let loaded = try await provider.loadLegacyItem(for: .plainText)
+                        let kind = loaded.map { String(describing: type(of: $0)) } ?? "nil"
+                        if let text = SharedTextDecoder.text(fromLoadedItem: loaded) {
+                            logger.info("text via loadItem (\(kind, privacy: .public)), \(text.count) chars")
+                            return text
+                        }
+                        logger.info("loadItem returned \(kind, privacy: .public) that is not usable text")
+                    } catch {
+                        logger.info("loadItem failed: \(String(describing: error), privacy: .public)")
+                    }
+                }
+
+                if provider.canLoadObject(ofClass: NSAttributedString.self) {
+                    do {
+                        if let attributed = try await provider.loadAttributedString(), let ok = SharedTextDecoder.nonEmpty(attributed.string) {
+                            logger.info("text via loadObject(NSAttributedString), \(ok.count) chars")
+                            return ok
+                        }
+                    } catch {
+                        logger.info("loadObject(NSAttributedString) failed: \(String(describing: error), privacy: .public)")
+                    }
+                }
+
+                if provider.hasItemConformingToTypeIdentifier(UTType.plainText.identifier) {
+                    do {
+                        let data = try await provider.loadData(for: .plainText)
+                        if let text = SharedTextDecoder.text(from: data) {
+                            logger.info("text via loadDataRepresentation, \(text.count) chars")
+                            return text
+                        }
+                        logger.error("plain-text data is not text: \(data.count) bytes, starts with \(SharedTextDecoder.hexPrefix(of: data), privacy: .public)")
+                    } catch {
+                        logger.info("loadDataRepresentation failed: \(String(describing: error), privacy: .public)")
                     }
                 }
             }
-            if let text = item.attributedContentText?.string, !text.isEmpty {
-                return text
+            if let text = item.attributedContentText?.string, let ok = SharedTextDecoder.nonEmpty(text) {
+                logger.info("text via attributedContentText, \(ok.count) chars")
+                return ok
             }
         }
-        throw ShareError.noText
-    }
-
-    private static func decodeText(_ data: Data) -> String? {
-        String(data: data, encoding: .utf8) ?? String(data: data, encoding: .utf16)
+        throw ShareError.noText(types: Array(Set(seenTypes)).sorted())
     }
 
     // MARK: - 文案
@@ -281,13 +330,26 @@ final class ShareViewController: UIViewController {
 }
 
 private extension NSItemProvider {
-    func loadData(for type: UTType) async throws -> Data {
+    func loadString() async throws -> String? {
         try await withCheckedThrowingContinuation { continuation in
-            _ = loadDataRepresentation(for: type) { data, error in
-                if let data {
-                    continuation.resume(returning: data)
+            _ = loadObject(ofClass: NSString.self) { object, error in
+                if let error {
+                    continuation.resume(throwing: error)
                 } else {
-                    continuation.resume(throwing: error ?? CocoaError(.fileReadCorruptFile))
+                    continuation.resume(returning: (object as? NSString).map { $0 as String })
+                }
+            }
+        }
+    }
+
+    /// 已 deprecated（iOS 27 SDK）但仍可用：按 Apple 的强制转换规则返回 String / NSAttributedString / Data / NSURL。
+    func loadLegacyItem(for type: UTType) async throws -> (any NSSecureCoding)? {
+        try await withCheckedThrowingContinuation { continuation in
+            loadItem(forTypeIdentifier: type.identifier, options: nil) { item, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else {
+                    continuation.resume(returning: item)
                 }
             }
         }
@@ -300,6 +362,18 @@ private extension NSItemProvider {
                     continuation.resume(throwing: error)
                 } else {
                     continuation.resume(returning: object as? NSAttributedString)
+                }
+            }
+        }
+    }
+
+    func loadData(for type: UTType) async throws -> Data {
+        try await withCheckedThrowingContinuation { continuation in
+            _ = loadDataRepresentation(for: type) { data, error in
+                if let data {
+                    continuation.resume(returning: data)
+                } else {
+                    continuation.resume(throwing: error ?? CocoaError(.fileReadCorruptFile))
                 }
             }
         }
