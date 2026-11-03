@@ -45,7 +45,7 @@ Windows 电脑 ↔ iPhone 剪贴板同步。Windows 端 Python 服务 + iOS 键�
 ### 现状（2026-11-03）
 - 阶段 0、1 完成：工程、三个 target、App Groups + Keychain Sharing 都已签名装到真机，codesign 实测 entitlements 正确；`ClipBridgeKit` 已作为本地包链接到三个 target，`swift test` 全过
 - 阶段 2 主 App 真机验收通过：App 内扫码 / 确认 / 保存、测试连接两项全绿、401 和连不上的提示、系统相机扫码弹「Open in ClipBridge」直达确认页、AppIdentifierPrefix 展开、`SharedPairingStore.live()` 和 Keychain 写入都正常。**本地网络权限弹窗没测到**：校园网里手机和电脑在不同子网、流量经路由转发，iOS 不把它当本地网络（TN3179 的定义），从不弹窗、设置里也没有 ClipBridge 条目；-1009 那条路径留到手机热点下补测
-- 阶段 3 键盘扩展：代码在 `ios/ClipBridgeKeyboard/`（KeyboardViewController + KeyboardView，纯 UIKit），待真机验证
+- 阶段 3 键盘扩展：代码在 `ios/ClipBridgeKeyboard/`（KeyboardViewController + KeyboardView，纯 UIKit），经审查修正、真机 SDK 构建通过，待真机验证。键盘里的几条经验：状态行必须固定高度（否则 UIStackView 让它吃掉全部高度，卡片区域被压成 0 pt，布局不报错）；卡片是 UIControl，滚动视图要重写 `touchesShouldCancel(in:)` 返回 true 才能按住拖动；隐藏的地球键宽度约束要用 999 优先级（UIStackView 隐藏时加 required 的 width == 0）；横屏高度用 190（键盘跟随宿主方向，和主 App 锁竖屏无关）；`UIPasteboard.string` 在 iOS 16+ 每次都可能弹「允许粘贴」，返回 nil 表示用户拒绝，不是剪贴板为空
 - 无害的控制台日志：首次访问 App Group UserDefaults 的 CFPrefs「detaching from cfprefsd」、相机关闭时的 FigCaptureSourceRemote err=-17281
 - 签名：免费 Apple ID（Personal Team，Team ID `L24ST657GM`）。描述文件 7 天过期（过期后重新 ⌘R 覆盖安装即可，键盘启用状态保留）；每周最多注册 10 个 App ID、每台设备最多 3 个 App（扩展可能也计数）
 - 真机：iPhone 17 Pro Max「char」，iOS 26.6.1。Xcode 27.2 只能给 iOS 17+ 的设备装调试包；部署目标 iOS 17.6（Xcode 27.2 能选的最低值）
