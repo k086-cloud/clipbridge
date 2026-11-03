@@ -29,6 +29,7 @@ DerivedData/
 *.xcscmblueprint
 *.xccheckout
 .build/
+ios/**/.build/
 .swiftpm/
 *.mobileprovision
 *.p12
