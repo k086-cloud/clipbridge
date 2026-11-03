@@ -12,7 +12,7 @@ public struct ClipBridgeClient: Sendable {
     public init(
         baseURL: URL,
         token: String,
-        session: URLSession = ClipBridgeClient.makeSession(),
+        session: URLSession = ClipBridgeClient.defaultSession,
         maxTextBytes: Int = ClipBridgeIdentifiers.defaultMaxTextBytes
     ) {
         self.baseURL = baseURL
@@ -23,14 +23,19 @@ public struct ClipBridgeClient: Sendable {
 
     public init(
         pairing: PairingInfo,
-        session: URLSession = ClipBridgeClient.makeSession(),
+        session: URLSession = ClipBridgeClient.defaultSession,
         maxTextBytes: Int = ClipBridgeIdentifiers.defaultMaxTextBytes
     ) {
         self.init(baseURL: pairing.baseURL, token: pairing.token, session: session, maxTextBytes: maxTextBytes)
     }
 
+    /// 整个进程共用一个 session：URLSession 跑过任务后会一直活到 invalidate 为止，
+    /// 每建一个 client 就 makeSession() 一次会在键盘扩展里慢慢堆内存。
+    public static let defaultSession: URLSession = makeSession()
+
     /// 键盘扩展里不能让请求挂 60 秒：电脑关机时局域网 TCP 会一直重试。
     /// `URLSession.shared` 改不了超时，所以用独立的 ephemeral 配置。
+    /// 需要别的超时时调用它，但要自己长期持有返回的 session（或用完 finishTasksAndInvalidate），不要每次请求都新建。
     public static func makeSession(requestTimeout: TimeInterval = 3, resourceTimeout: TimeInterval = 5) -> URLSession {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = requestTimeout

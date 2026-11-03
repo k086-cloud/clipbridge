@@ -13,11 +13,19 @@ public struct PairingEndpoint: Codable, Equatable, Hashable, Sendable {
         self.port = port
     }
 
-    /// host 只允许主机名 / IPv4 / IPv6 字面量：非空、无空白、不含 URL 分隔符。
+    /// host 只允许主机名 / IPv4 / IPv6 字面量：非空、无空白、不含 URL 分隔符；
+    /// 含冒号的必须是合法的 IPv6 字面量——否则「192.168.1.23:8765」这种带端口的输入会被当成主机名存下来。
+    /// 带 zone 的链路本地地址（fe80::1%en0）不支持：baseURL 不做百分号编码，URL 会解析失败。
     public static func isValidHost(_ host: String) -> Bool {
         guard !host.isEmpty else { return false }
-        let forbidden = CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: "/?#@\\[]"))
-        return host.rangeOfCharacter(from: forbidden) == nil
+        let forbidden = CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: "/?#@\\[]%"))
+        guard host.rangeOfCharacter(from: forbidden) == nil else { return false }
+        return host.contains(":") ? isIPv6Literal(host) : true
+    }
+
+    public static func isIPv6Literal(_ host: String) -> Bool {
+        var address = in6_addr()
+        return host.withCString { inet_pton(AF_INET6, $0, &address) } == 1
     }
 
     public static func isValidPort(_ port: Int) -> Bool {

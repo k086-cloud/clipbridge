@@ -247,9 +247,12 @@ final class ClipBridgeClientTests: XCTestCase {
     }
 
     func testDefaultSessionHasShortTimeouts() {
-        let configuration = ClipBridgeClient.makeSession().configuration
-        XCTAssertEqual(configuration.timeoutIntervalForRequest, 3)
-        XCTAssertEqual(configuration.timeoutIntervalForResource, 5)
-        XCTAssertFalse(configuration.waitsForConnectivity)
+        for configuration in [ClipBridgeClient.makeSession().configuration, ClipBridgeClient.defaultSession.configuration] {
+            XCTAssertEqual(configuration.timeoutIntervalForRequest, 3)
+            XCTAssertEqual(configuration.timeoutIntervalForResource, 5)
+            XCTAssertFalse(configuration.waitsForConnectivity)
+        }
+        // 默认参数共用同一个 session，不是每个 client 一个
+        XCTAssertTrue(ClipBridgeClient.defaultSession === ClipBridgeClient.defaultSession)
     }
 }

@@ -61,6 +61,14 @@ final class PairingInfoTests: XCTestCase {
         XCTAssertFalse(PairingEndpoint.isValidHost("host/path"))
         XCTAssertFalse(PairingEndpoint.isValidHost("user@host"))
         XCTAssertFalse(PairingEndpoint.isValidHost("[fe80::1]"))
+        // 带端口的「IP:端口」不是主机名；含冒号只能是 IPv6 字面量
+        XCTAssertFalse(PairingEndpoint.isValidHost("192.168.1.23:8765"))
+        XCTAssertFalse(PairingEndpoint.isValidHost("mypc:8765"))
+        XCTAssertFalse(PairingEndpoint.isValidHost("fe80::1%en0"))
+        XCTAssertTrue(PairingEndpoint.isValidHost("::1"))
+        XCTAssertTrue(PairingEndpoint.isValidHost("2001:db8::1"))
+        XCTAssertTrue(PairingEndpoint.isIPv6Literal("::1"))
+        XCTAssertFalse(PairingEndpoint.isIPv6Literal("192.168.1.23"))
     }
 
     func testPortValidation() {
