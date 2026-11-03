@@ -4,11 +4,14 @@ import ClipBridgeKit
 struct RootView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.openURL) private var openURL
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var showScanner = false
     @State private var showManualEntry = false
     @State private var showUnpairConfirmation = false
     @State private var actionError: String?
+    /// 扫到的码先存着，等扫码 sheet 完全关闭（onDismiss）再交给 model：同一次渲染里关一个 sheet 又开另一个会被 SwiftUI 丢掉。
+    @State private var scannedCode: String?
 
     var body: some View {
         @Bindable var model = model
@@ -38,7 +41,7 @@ struct RootView: View {
                     }
                     if model.pairingInfo != nil {
                         Button {
-                            Task { await model.testConnection() }
+                            model.startConnectionTest()
                         } label: {
                             Label("测试连接", systemImage: "antenna.radiowaves.left.and.right")
                         }
@@ -68,7 +71,7 @@ struct RootView: View {
                     } label: {
                         Label("打开 ClipBridge 的系统设置", systemImage: "gear")
                     }
-                    Text("设置页里有：键盘（开启、允许完全访问）、本地网络、相机。")
+                    Text("设置页里一直有「键盘」（开启、允许完全访问）；「本地网络」和「相机」要在 App 第一次申请过之后才会出现。")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
@@ -83,9 +86,14 @@ struct RootView: View {
             }
             .navigationTitle("ClipBridge")
         }
-        .sheet(isPresented: $showScanner) {
-            ScanPairingView { code in
+        .sheet(isPresented: $showScanner, onDismiss: {
+            if let code = scannedCode {
+                scannedCode = nil
                 model.handleScannedCode(code)
+            }
+        }) {
+            ScanPairingView { code in
+                scannedCode = code
             }
         }
         .sheet(isPresented: $showManualEntry) {
@@ -122,6 +130,9 @@ struct RootView: View {
         .onAppear {
             model.refresh()
         }
+        .onChange(of: scenePhase, initial: true) { _, phase in
+            model.scenePhase = phase
+        }
     }
 }
 
@@ -134,7 +145,7 @@ struct PairingStatusView: View {
             VStack(alignment: .leading, spacing: 6) {
                 Label("尚未配对", systemImage: "link.badge.plus")
                     .font(.headline)
-                Text("在电脑上运行 ClipBridge 服务，终端会打印一个二维码；用下面的「扫描」对准它。")
+                Text("在电脑上运行 ClipBridge 服务，终端会打印一个二维码；用下面的「扫描」对准它。token 和剪贴板内容在局域网内明文传输，请只在家用 Wi-Fi 或手机热点下使用。")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }

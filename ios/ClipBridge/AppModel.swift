@@ -1,6 +1,7 @@
 import Foundation
 import ClipBridgeKit
 import Observation
+import SwiftUI
 
 /// 主 App 的状态：配对信息、待确认的配对、连接测试结果。所有方法都在主线程（App target 默认 MainActor）。
 @Observable
@@ -15,6 +16,14 @@ final class AppModel {
     /// 扫码或链接解析失败的说明，用来弹提示。
     var pairingInputError: String?
     private(set) var connectionTest: ConnectionTest = .idle
+    /// 由 RootView 用 scenePhase 喂进来。系统权限弹窗出现时 scene 会变成 inactive，回到 active 说明用户已经回答。
+    var scenePhase: ScenePhase = .active
+
+    /// 整个 App 共用一个 session（跑过任务的 URLSession 会一直活到 invalidate，不能每次测试新建一个）。
+    @ObservationIgnored private let session = ClipBridgeClient.makeSession(requestTimeout: 5, resourceTimeout: 8)
+    @ObservationIgnored private var testTask: Task<Void, Never>?
+    /// 每次开始/取消测试都加一，旧测试的结果对不上代数就丢掉——解除配对或重新配对后不会冒出上一台电脑的报告。
+    @ObservationIgnored private var testGeneration = 0
 
     init(store: any PairingStore, configurationError: String? = nil) {
         self.store = store
@@ -74,66 +83,120 @@ final class AppModel {
 
     func pair(_ info: PairingInfo) throws {
         try store.save(info)
-        connectionTest = .idle
+        cancelConnectionTest()
         refresh()
     }
 
     func unpair() throws {
         try store.clear()
-        connectionTest = .idle
+        cancelConnectionTest()
         refresh()
     }
 
     // MARK: 测试连接
 
+    func startConnectionTest() {
+        cancelConnectionTest()
+        let generation = testGeneration
+        testTask = Task { await runConnectionTest(generation: generation) }
+    }
+
+    private func cancelConnectionTest() {
+        testTask?.cancel()
+        testTask = nil
+        testGeneration += 1
+        connectionTest = .idle
+    }
+
+    private func publish(_ test: ConnectionTest, generation: Int) {
+        guard generation == testGeneration else { return }
+        connectionTest = test
+    }
+
     /// 先 /health（免鉴权，证明局域网通、对面是 ClipBridge），再 history?limit=1（证明 token 正确）。
-    /// 第一次访问局域网会触发系统的「本地网络」弹窗，系统可能在用户回答前就先拒绝一次，所以 -1009 时等 2 秒重试一次。
-    func testConnection() async {
+    private func runConnectionTest(generation: Int) async {
         guard let info = pairingInfo else {
             return
         }
         var report = ConnectionReport()
-        connectionTest = .running(report)
-        let client = ClipBridgeClient(
-            pairing: info,
-            session: ClipBridgeClient.makeSession(requestTimeout: 5, resourceTimeout: 8)
-        )
+        publish(.running(report), generation: generation)
+        let client = ClipBridgeClient(pairing: info, session: session)
 
         do {
-            let health = try await withLocalNetworkRetry { try await client.health() }
+            let health = try await healthWaitingForLocalNetworkPrompt(client: client, report: &report, generation: generation)
             let monitor = health.monitorRunning ? "运行中" : "未运行"
+            report.hint = nil
             report.health = .ok("服务 v\(health.version)，剪贴板监听\(monitor)，已记录 \(health.historyItems) 条")
+            // 先把这一行变绿，别让用户等第二步的超时
+            publish(.running(report), generation: generation)
         } catch {
+            guard !Task.isCancelled else { return }
             report.health = .failed(error.localizedDescription)
-            report.hint = Self.hint(for: error)
-            connectionTest = .finished(report)
+            report.hint = Self.hint(for: error, port: info.port)
+            publish(.finished(report), generation: generation)
             return
         }
 
         do {
             let item = try await client.latest()
             if let item {
-                report.latest = .ok("token 正确。电脑最新一条：\(Self.preview(item.content))")
+                // 只报元数据，不把电脑剪贴板的内容留在屏幕上（可能是密码、验证码）
+                let source = item.source == .pc ? "电脑" : "手机"
+                let time = item.timestamp.formatted(date: .omitted, time: .shortened)
+                report.latest = .ok("token 正确。最新一条来自\(source)，\(time)")
             } else {
                 report.latest = .ok("token 正确。电脑上还没有记录任何内容")
             }
         } catch {
+            guard !Task.isCancelled else { return }
             report.latest = .failed(error.localizedDescription)
-            report.hint = Self.hint(for: error)
+            report.hint = Self.hint(for: error, port: info.port)
         }
-        connectionTest = .finished(report)
+        publish(.finished(report), generation: generation)
     }
 
-    private func withLocalNetworkRetry<T>(_ operation: () async throws -> T) async throws -> T {
-        do {
-            return try await operation()
-        } catch let error as ClipBridgeError where error.isOfflineOrLocalNetworkDenied {
-            try await Task.sleep(for: .seconds(2))
-            return try await operation()
+    /// 第一次访问局域网会触发系统的「本地网络」弹窗，而且系统可能在用户回答前就先拒绝一次（-1009）。
+    /// 没有 API 能查询这个权限，只能重试：弹窗出现时 scene 变 inactive，回到 active 就是用户答完了，再试最后一次；
+    /// 一直没见到弹窗（之前就拒绝过、或没连 Wi-Fi）就只多试一次；整体不超过 25 秒。
+    private func healthWaitingForLocalNetworkPrompt(
+        client: ClipBridgeClient,
+        report: inout ConnectionReport,
+        generation: Int
+    ) async throws -> HealthResponse {
+        let clock = ContinuousClock()
+        let start = clock.now
+        var sawAlert = false
+        var triedAfterAnswer = false
+        while true {
+            do {
+                return try await client.health()
+            } catch let error as ClipBridgeError where error.isOfflineOrLocalNetworkDenied {
+                try Task.checkCancellation()
+                let elapsed = clock.now - start
+                if triedAfterAnswer || elapsed > .seconds(25) {
+                    throw error
+                }
+                if scenePhase != .active {
+                    sawAlert = true
+                }
+                if !sawAlert && elapsed > .seconds(4) {
+                    // 4 秒内没弹过窗：不是首次询问，是真的被拒或没网
+                    throw error
+                }
+                if report.hint == nil {
+                    report.hint = "系统正在询问「本地网络」权限，请在弹窗里选「允许」…"
+                    publish(.running(report), generation: generation)
+                }
+                if sawAlert && scenePhase == .active {
+                    triedAfterAnswer = true
+                    continue
+                }
+                try await Task.sleep(for: .seconds(1))
+            }
         }
     }
 
-    static func hint(for error: Error) -> String? {
+    static func hint(for error: Error, port: Int) -> String? {
         guard let error = error as? ClipBridgeError else {
             return nil
         }
@@ -146,20 +209,15 @@ final class AppModel {
             break
         }
         if error.isOfflineOrLocalNetworkDenied {
-            return "到 设置 → 隐私与安全性 → 本地网络 打开 ClipBridge（也可从下面的「打开 ClipBridge 设置」进入），并确认 iPhone 和电脑在同一个 Wi-Fi。"
+            return "如果刚才弹出了询问并已点「允许」，再点一次「测试连接」即可；否则到 设置 → 隐私与安全性 → 本地网络 打开 ClipBridge（「打开 ClipBridge 的系统设置」也能进入），并确认 iPhone 和电脑在同一个 Wi-Fi。"
         }
         if error.isUnreachable {
-            return "确认电脑上的服务在运行、IP 没变、防火墙放行了 8765 端口，并且手机和电脑在同一个 Wi-Fi（校园网常有 AP 隔离，可改用手机热点）。"
+            return "确认电脑上的服务在运行、IP 没变、防火墙放行了 \(port) 端口，并且手机和电脑在同一个 Wi-Fi（校园网常有 AP 隔离，可改用手机热点）。"
         }
         if error.isBlockedByATS {
             return "工程配置错误：Info.plist 缺 NSAppTransportSecurity → NSAllowsLocalNetworking。"
         }
         return nil
-    }
-
-    static func preview(_ text: String, limit: Int = 60) -> String {
-        let flattened = text.replacingOccurrences(of: "\n", with: " ")
-        return flattened.count > limit ? String(flattened.prefix(limit)) + "…" : flattened
     }
 }
 
@@ -195,7 +253,7 @@ struct ConnectionReport: Equatable {
 
     var health: Step = .pending
     var latest: Step = .pending
-    /// 失败时告诉用户下一步做什么。
+    /// 进行中：当前在等什么；失败时：下一步做什么。
     var hint: String?
 
     var isSuccess: Bool {

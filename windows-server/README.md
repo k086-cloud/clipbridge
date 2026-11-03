@@ -186,5 +186,9 @@ clipboard) and every API endpoint. They never touch the real clipboard.
 - The token is the only protection; anyone on the LAN with it can read and
   write your clipboard. Keep `config.json` private and delete it to rotate.
 - Traffic is plain HTTP on your local network. Do not expose the port to the
-  internet.
+  internet, and pair/use ClipBridge only on a home Wi-Fi network or the phone's
+  own hotspot, never on shared or public Wi-Fi (campus, cafe, hotel): anyone on
+  that network can read the token and the clipboard text. If you think the
+  token leaked, delete `config.json` and restart (a new token is generated),
+  then pair the phone again.
 - History lives in memory only and is gone when the server stops.

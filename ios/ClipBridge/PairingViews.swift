@@ -69,7 +69,13 @@ struct ManualPairingView: View {
     private var trimmedToken: String { token.trimmingCharacters(in: .whitespacesAndNewlines) }
 
     private var hostProblem: String? {
-        trimmedHost.isEmpty || PairingEndpoint.isValidHost(trimmedHost) ? nil : "不能含空格或 / ? # @ [ ]"
+        if trimmedHost.isEmpty || PairingEndpoint.isValidHost(trimmedHost) {
+            return nil
+        }
+        if trimmedHost.contains(":") {
+            return "只填 IP 或主机名，不要带端口；含冒号的只能是 IPv6 地址"
+        }
+        return "不能含空格或 / ? # @ [ ]"
     }
 
     private var portProblem: String? {
@@ -78,9 +84,14 @@ struct ManualPairingView: View {
         return nil
     }
 
+    /// 已配对时留空 token 表示沿用当前的 token（只改地址的场景），不用把密钥搬进明文输入框。
+    private var effectiveToken: String? {
+        trimmedToken.isEmpty ? model.pairingInfo?.token : trimmedToken
+    }
+
     private var canSave: Bool {
-        guard let port else { return false }
-        return PairingEndpoint.isValidHost(trimmedHost) && PairingEndpoint.isValidPort(port) && !trimmedToken.isEmpty
+        guard let port, effectiveToken != nil else { return false }
+        return PairingEndpoint.isValidHost(trimmedHost) && PairingEndpoint.isValidPort(port)
     }
 
     var body: some View {
@@ -118,15 +129,14 @@ struct ManualPairingView: View {
                 } header: {
                     Text("token")
                 } footer: {
-                    Text("区分大小写，整段复制最稳妥。")
+                    Text(model.pairingInfo == nil ? "区分大小写，整段复制最稳妥。" : "区分大小写，整段复制最稳妥。已配对时留空则沿用当前 token。")
                 }
 
                 if let current = model.pairingInfo {
                     Section {
-                        Button("填入当前配对（\(current.host):\(String(current.port))）") {
+                        Button("填入当前地址（\(current.host):\(String(current.port))）") {
                             host = current.host
                             portText = String(current.port)
-                            token = current.token
                         }
                     }
                 }
@@ -139,9 +149,9 @@ struct ManualPairingView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("保存") {
-                        guard let port else { return }
+                        guard let port, let token = effectiveToken else { return }
                         do {
-                            try model.pair(PairingInfo(host: trimmedHost, port: port, token: trimmedToken))
+                            try model.pair(PairingInfo(host: trimmedHost, port: port, token: token))
                             dismiss()
                         } catch {
                             saveError = error.localizedDescription
