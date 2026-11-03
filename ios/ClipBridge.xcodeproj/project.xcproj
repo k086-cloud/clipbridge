@@ -199,7 +199,7 @@
         "DEVELOPMENT_TEAM": "L24ST657GM",
         "GENERATE_INFOPLIST_FILE": "YES",
         "INFOPLIST_FILE": "ClipBridgeShare/Info.plist",
-        "INFOPLIST_KEY_CFBundleDisplayName": "ClipBridgeShare",
+        "INFOPLIST_KEY_CFBundleDisplayName": "ClipBridge",
         "INFOPLIST_KEY_NSHumanReadableCopyright": "",
         "LD_RUNPATH_SEARCH_PATHS": [
           "$(inherited)",
