@@ -46,7 +46,9 @@ Windows 电脑 ↔ iPhone 剪贴板同步。Windows 端 Python 服务 + iOS 键�
 - 阶段 0 完成：工程、三个 target、App Groups + Keychain Sharing 都已签名装到真机，codesign 实测 entitlements 正确。阶段 1 的 `ClipBridgeKit` 已写好、`swift test` 全过，**还没在 Xcode 里链接到三个 target**
 - 签名：免费 Apple ID（Personal Team，Team ID `L24ST657GM`）。描述文件 7 天过期（过期后重新 ⌘R 覆盖安装即可，键盘启用状态保留）；每周最多注册 10 个 App ID、每台设备最多 3 个 App（扩展可能也计数）
 - 真机：iPhone 17 Pro Max「char」，iOS 26.6.1。Xcode 27.2 只能给 iOS 17+ 的设备装调试包；部署目标 iOS 17.6（Xcode 27.2 能选的最低值）
-- 工程文件是 JSON 格式 `ios/ClipBridge.xcodeproj/project.xcproj`（不是 pbxproj），只有 Xcode 27+ 能打开；直接改它之前先看清格式，改完用 `xcodebuild -project ios/ClipBridge.xcodeproj -scheme ClipBridge -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build` 验证
+- 工程文件是 JSON 格式 `ios/ClipBridge.xcodeproj/project.xcproj`（不是 pbxproj），只有 Xcode 27+ 能打开。改构建设置、target、包依赖优先用 Xcode 27 自带的命令行工具 `xcrun xcodeproj`（`setting` / `target` / `group` / `pkg` 子命令，`xcrun xcodeproj pkg list -P ios/ClipBridge.xcodeproj` 可看包链接），手改 JSON 前先看清格式；改完用 `xcodebuild -project ios/ClipBridge.xcodeproj -scheme ClipBridge -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build` 验证（真机 SDK 加 `-sdk iphoneos -destination 'generic/platform=iOS' -allowProvisioningUpdates`）
+- 三个 target 都是 Swift 5 语言模式 + Approachable Concurrency；只有主 App target 默认 MainActor 隔离，两个扩展默认 nonisolated。Kit 的 PairingStore/EndpointStore/TokenStore 都继承 Sendable，App 侧自写实现要么是只含 let 的 struct，要么是带锁的 `final class … @unchecked Sendable`
+- ClipBridgeKit 已作为本地包链接到三个 target（静态链接，`ClipBridgeKit.o` 各链一份）；ios/ClipBridgeKit 必须和 ClipBridge.xcodeproj 同级，不能移进三个同步文件夹里
 
 ### Target 与 Bundle ID（已注册到 Personal Team，绝不要改名）
 - `ClipBridge`（主 App，SwiftUI）= `com.charleschen.ClipBridge`
