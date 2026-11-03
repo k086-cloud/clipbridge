@@ -11,9 +11,11 @@ import os
 /// 手机 → 电脑：在任何 App 里选中文字 → 分享 → ClipBridge，文字 POST /clip 写进电脑剪贴板。
 /// 共享扩展没有「允许完全访问」这种限制；本地网络权限继承主 App。
 /// 必须等 POST 完成再 completeRequest：调用后进程立即被回收，没发完的请求会被取消。
+/// iPhone 上系统把它显示成整屏的 sheet，用户可以下拉关闭——那也必须以 cancelRequest 结束，否则宿主的分享面板会挂住。
 final class ShareViewController: UIViewController {
     private enum ShareError: LocalizedError {
         case noText(types: [String])
+        case attachmentTooLarge(bytes: Int)
         case notPaired
         case misconfigured
 
@@ -22,6 +24,8 @@ final class ShareViewController: UIViewController {
             case let .noText(types):
                 let list = types.isEmpty ? "无" : types.joined(separator: ", ")
                 return "分享的内容里没有可用的纯文字，没有发送。\n附件类型：\(list)"
+            case let .attachmentTooLarge(bytes):
+                return "分享的内容太大（\(bytes / 1024) KB），只能发送 \(ClipBridgeIdentifiers.defaultMaxTextBytes / 1024) KB 以内的文字。"
             case .notPaired:
                 return "尚未配对。先打开 ClipBridge App，扫描电脑终端里的二维码。"
             case .misconfigured:
@@ -33,6 +37,9 @@ final class ShareViewController: UIViewController {
     /// 分享面板里多等一会儿没关系，别用键盘那套 3 秒超时。
     private static let session = ClipBridgeClient.makeSession(requestTimeout: 8, resourceTimeout: 12)
     private static let successDismissDelay: TimeInterval = 0.8
+    /// 先看附件大小再读进内存：从「文件」分享一个几十 MB 的 .txt 会把扩展（约 120 MB 上限）直接撑死。
+    /// 真正的上限由 send() 按 UTF-8 字节数判定；这里只拦明显离谱的。
+    private static let maxAttachmentBytes = 2 * 1024 * 1024
     private static let logger = Logger(subsystem: "com.charleschen.ClipBridge", category: "share")
 
     private let pairingStore: (any PairingStore)? = SharedPairingStore.live()
@@ -47,6 +54,8 @@ final class ShareViewController: UIViewController {
     private var sharedText: String?
     private var task: Task<Void, Never>?
     private var lastFailure: String?
+    /// extensionContext 只能结束一次：成功、取消、下拉关闭三条路都经过这个标记。
+    private var finished = false
 
     // MARK: - Lifecycle
 
@@ -54,6 +63,15 @@ final class ShareViewController: UIViewController {
         super.viewDidLoad()
         buildUI()
         start()
+    }
+
+    /// 用户下拉关掉 sheet（没点任何按钮）：停掉请求，按「用户取消」结束。
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        guard !finished else { return }
+        finished = true
+        task?.cancel()
+        extensionContext?.cancelRequest(withError: NSError(domain: NSCocoaErrorDomain, code: NSUserCancelledError, userInfo: nil))
     }
 
     private func start() {
@@ -103,7 +121,11 @@ final class ShareViewController: UIViewController {
                 succeed(characterCount: text.count)
             } catch {
                 guard !Task.isCancelled else { return }
-                fail(Self.message(for: error), hint: Self.hint(for: error, port: info.port), retryable: Self.isRetryable(error))
+                fail(
+                    Self.message(for: error, endpoint: info.endpoint),
+                    hint: Self.hint(for: error, endpoint: info.endpoint),
+                    retryable: Self.isRetryable(error)
+                )
             }
         }
     }
@@ -111,6 +133,9 @@ final class ShareViewController: UIViewController {
     // MARK: - 结束扩展
 
     private func succeed(characterCount: Int) {
+        guard !finished else { return }
+        // POST 已经成功：之后再下拉也不算取消，只等 completeRequest
+        finished = true
         spinner.stopAnimating()
         statusLabel.text = "已发送到电脑（\(characterCount) 个字符）"
         hintLabel.text = "在电脑上 Ctrl+V 即可粘贴。"
@@ -133,6 +158,8 @@ final class ShareViewController: UIViewController {
 
     /// 取消 / 失败后关闭：把原因交给宿主（宿主一般不显示，但按 Apple 的契约应该这样结束）。
     private func cancel() {
+        guard !finished else { return }
+        finished = true
         task?.cancel()
         let error: NSError
         if let lastFailure {
@@ -150,9 +177,11 @@ final class ShareViewController: UIViewController {
     // MARK: - 取分享的文字
 
     /// 每个附件依次尝试，拿到非空文字就用；全部失败才报错（错误里带附件类型，便于排查）。
-    /// 顺序：① loadObject(NSString)——系统按 NSItemProviderReading 规则给 String；
-    /// ② loadItem(forTypeIdentifier: public.plain-text)——按 Apple 的强制转换规则给 String / NSAttributedString / Data；
-    /// ③ loadObject(NSAttributedString)——富文本取 .string；
+    /// 顺序：⓪ 先看附件大小，离谱的直接拒；
+    /// ① loadObject(NSString)——系统按 NSItemProviderReading 规则给 String；
+    /// ② loadItem(forTypeIdentifier: public.plain-text)——按 Apple 的强制转换规则给 String / NSAttributedString / Data，
+    ///    是唯一会把老式注册的 NSString 还原出来的接口（iOS 27 SDK 标 deprecated，仍可用）；
+    /// ③ loadObject(NSAttributedString)——富文本取 .string（它会把归档字节当文本解，所以也要过 nonEmpty 的 bplist 检查）；
     /// ④ loadDataRepresentation——原始 Data，必须是合法 UTF-8 或能解开的归档，二进制一律不当文本（2026-11-04 的乱码 bug）；
     /// ⑤ NSExtensionItem.attributedContentText。
     private static func extractText(from inputItems: [Any]) async throws -> String {
@@ -162,6 +191,15 @@ final class ShareViewController: UIViewController {
                 let types = provider.registeredTypeIdentifiers
                 seenTypes.append(contentsOf: types)
                 logger.info("attachment registeredTypeIdentifiers: \(types.joined(separator: ", "), privacy: .public)")
+
+                let hasPlainText = provider.hasItemConformingToTypeIdentifier(UTType.plainText.identifier)
+
+                if hasPlainText, let size = await provider.representationSize(for: .plainText) {
+                    logger.info("plain-text representation size: \(size) bytes")
+                    if size > maxAttachmentBytes {
+                        throw ShareError.attachmentTooLarge(bytes: size)
+                    }
+                }
 
                 if provider.canLoadObject(ofClass: NSString.self) {
                     do {
@@ -174,7 +212,7 @@ final class ShareViewController: UIViewController {
                     }
                 }
 
-                if provider.hasItemConformingToTypeIdentifier(UTType.plainText.identifier) {
+                if hasPlainText {
                     do {
                         let loaded = try await provider.loadLegacyItem(for: .plainText)
                         let kind = loaded.map { String(describing: type(of: $0)) } ?? "nil"
@@ -199,7 +237,7 @@ final class ShareViewController: UIViewController {
                     }
                 }
 
-                if provider.hasItemConformingToTypeIdentifier(UTType.plainText.identifier) {
+                if hasPlainText {
                     do {
                         let data = try await provider.loadData(for: .plainText)
                         if let text = SharedTextDecoder.text(from: data) {
@@ -222,7 +260,7 @@ final class ShareViewController: UIViewController {
 
     // MARK: - 文案
 
-    private static func message(for error: Error) -> String {
+    private static func message(for error: Error, endpoint: PairingEndpoint) -> String {
         guard let error = error as? ClipBridgeError else {
             return error.localizedDescription
         }
@@ -230,12 +268,12 @@ final class ShareViewController: UIViewController {
             return "本地网络被拒或没有 Wi-Fi。"
         }
         if error.isUnreachable {
-            return "连不上电脑：\(error.localizedDescription)"
+            return "连不上电脑 \(endpoint.host):\(String(endpoint.port))：\(error.localizedDescription)"
         }
         return error.localizedDescription
     }
 
-    private static func hint(for error: Error, port: Int) -> String? {
+    private static func hint(for error: Error, endpoint: PairingEndpoint) -> String? {
         guard let error = error as? ClipBridgeError else {
             return nil
         }
@@ -243,9 +281,9 @@ final class ShareViewController: UIViewController {
         case .unauthorized:
             return "在 ClipBridge App 里重新扫码配对。"
         case .notFound, .invalidResponse:
-            return "配对的地址上不是 ClipBridge 服务，在 App 里检查 host 和端口。"
+            return "\(endpoint.host):\(String(endpoint.port)) 上不是 ClipBridge 服务，在 App 里检查 host 和端口。"
         case .payloadTooLarge, .contentTooLarge:
-            return "只能发送 100 KB 以内的文字。"
+            return "超过了电脑端允许的大小（config.json 的 max_text_bytes，默认 100 KB）。"
         case .clipboardUnavailable:
             return "电脑端写剪贴板失败，稍后重试。"
         default:
@@ -255,7 +293,7 @@ final class ShareViewController: UIViewController {
             return "先在 ClipBridge App 里点「测试连接」并允许本地网络。"
         }
         if error.isUnreachable {
-            return "确认电脑上的服务在运行、防火墙放行了 \(port) 端口、手机和电脑在同一个 Wi-Fi。"
+            return "确认电脑上的服务在运行、IP 没变、防火墙放行了 \(endpoint.port) 端口，并且手机和电脑在同一个 Wi-Fi。"
         }
         return nil
     }
@@ -275,7 +313,9 @@ final class ShareViewController: UIViewController {
 
     // MARK: - UI
 
+    /// 新一轮尝试开始：清掉上一次的失败原因，此后点「取消」是用户取消，不是上次的失败。
     private func setBusy(_ text: String) {
+        lastFailure = nil
         spinner.startAnimating()
         statusLabel.text = text
         hintLabel.text = nil
@@ -286,7 +326,6 @@ final class ShareViewController: UIViewController {
 
     private func buildUI() {
         view.backgroundColor = .systemBackground
-        preferredContentSize = CGSize(width: 360, height: 280)
 
         titleLabel.text = "发送到电脑"
         titleLabel.font = .preferredFont(forTextStyle: .headline)
@@ -330,6 +369,16 @@ final class ShareViewController: UIViewController {
 }
 
 private extension NSItemProvider {
+    /// 让系统把这个类型写成临时文件，只看大小、不读内容；拿不到就当未知（返回 nil）。
+    func representationSize(for type: UTType) async -> Int? {
+        await withCheckedContinuation { continuation in
+            _ = loadFileRepresentation(forTypeIdentifier: type.identifier) { url, _ in
+                let size = url.flatMap { (try? FileManager.default.attributesOfItem(atPath: $0.path))?[.size] as? Int }
+                continuation.resume(returning: size)
+            }
+        }
+    }
+
     func loadString() async throws -> String? {
         try await withCheckedThrowingContinuation { continuation in
             _ = loadObject(ofClass: NSString.self) { object, error in
