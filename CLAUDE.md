@@ -43,7 +43,10 @@ Windows 电脑 ↔ iPhone 剪贴板同步。Windows 端 Python 服务 + iOS 键�
 ## iOS 端
 
 ### 现状（2026-11-03）
-- 阶段 0 完成：工程、三个 target、App Groups + Keychain Sharing 都已签名装到真机，codesign 实测 entitlements 正确。阶段 1 的 `ClipBridgeKit` 已写好、`swift test` 全过，**还没在 Xcode 里链接到三个 target**
+- 阶段 0、1 完成：工程、三个 target、App Groups + Keychain Sharing 都已签名装到真机，codesign 实测 entitlements 正确；`ClipBridgeKit` 已作为本地包链接到三个 target，`swift test` 全过
+- 阶段 2 主 App 真机验收通过：App 内扫码 / 确认 / 保存、测试连接两项全绿、401 和连不上的提示、系统相机扫码弹「Open in ClipBridge」直达确认页、AppIdentifierPrefix 展开、`SharedPairingStore.live()` 和 Keychain 写入都正常。**本地网络权限弹窗没测到**：校园网里手机和电脑在不同子网、流量经路由转发，iOS 不把它当本地网络（TN3179 的定义），从不弹窗、设置里也没有 ClipBridge 条目；-1009 那条路径留到手机热点下补测
+- 阶段 3 键盘扩展：代码在 `ios/ClipBridgeKeyboard/`（KeyboardViewController + KeyboardView，纯 UIKit），待真机验证
+- 无害的控制台日志：首次访问 App Group UserDefaults 的 CFPrefs「detaching from cfprefsd」、相机关闭时的 FigCaptureSourceRemote err=-17281
 - 签名：免费 Apple ID（Personal Team，Team ID `L24ST657GM`）。描述文件 7 天过期（过期后重新 ⌘R 覆盖安装即可，键盘启用状态保留）；每周最多注册 10 个 App ID、每台设备最多 3 个 App（扩展可能也计数）
 - 真机：iPhone 17 Pro Max「char」，iOS 26.6.1。Xcode 27.2 只能给 iOS 17+ 的设备装调试包；部署目标 iOS 17.6（Xcode 27.2 能选的最低值）
 - 工程文件是 JSON 格式 `ios/ClipBridge.xcodeproj/project.xcproj`（不是 pbxproj），只有 Xcode 27+ 能打开。改构建设置、target、包依赖优先用 Xcode 27 自带的命令行工具 `xcrun xcodeproj`（`setting` / `target` / `group` / `pkg` 子命令，`xcrun xcodeproj pkg list -P ios/ClipBridge.xcodeproj` 可看包链接），手改 JSON 前先看清格式；改完用 `xcodebuild -project ios/ClipBridge.xcodeproj -scheme ClipBridge -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build` 验证（真机 SDK 加 `-sdk iphoneos -destination 'generic/platform=iOS' -allowProvisioningUpdates`）
