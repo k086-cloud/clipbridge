@@ -112,6 +112,7 @@ Windows 电脑 ↔ iPhone 剪贴板同步。Windows 端 Python 服务 + iOS 键�
 - token 和剪贴板内容在局域网内明文传输，只在家用 Wi-Fi 或手机热点下用；怀疑泄露就删 config.json 重启重配
 
 ### v0.2 想法（未排期）
+- 清空历史：服务端加 `DELETE /clip/history`（需 token，返回 204），`ClipBridgeClient` 加 `clearHistory()`，主 App 加带确认的「清空电脑上的历史」按钮；键盘暂不加
 - HTTPS：服务端自签证书，指纹放进配对码，客户端按指纹 pin；一次性配对码代替 URL 里的 token
 - 图片 / 文件；历史持久化；mDNS 发现；开机自启；托盘图标
 - 键盘：长按连删、回车键；共享扩展：分享网址时也出现
