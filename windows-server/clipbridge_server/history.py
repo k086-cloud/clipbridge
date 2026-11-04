@@ -69,6 +69,13 @@ class ClipHistory:
             items = list(reversed(self._items))
         return items if limit is None else items[:limit]
 
+    def clear(self) -> int:
+        """Drop every item and return how many there were. The size limit is kept."""
+        with self._lock:
+            count = len(self._items)
+            self._items.clear()
+        return count
+
     def __len__(self) -> int:
         with self._lock:
             return len(self._items)

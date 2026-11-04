@@ -84,3 +84,24 @@ def test_to_dict_is_json_serialisable():
     assert datetime.fromisoformat(data["timestamp"]) == item.timestamp.replace(
         microsecond=(item.timestamp.microsecond // 1000) * 1000
     )
+
+
+def test_clear_empties_history_and_reports_count():
+    history = ClipHistory(max_items=3)
+    for index in range(2):
+        history.add(f"item {index}", "pc")
+    assert history.clear() == 2
+    assert len(history) == 0
+    assert history.latest() is None
+    assert history.recent() == []
+    assert history.clear() == 0
+
+
+def test_clear_keeps_capacity():
+    history = ClipHistory(max_items=3)
+    history.add("before", "pc")
+    history.clear()
+    assert history.max_items == 3
+    for index in range(5):
+        history.add(f"item {index}", "phone")
+    assert [item.content for item in history.recent()] == ["item 4", "item 3", "item 2"]

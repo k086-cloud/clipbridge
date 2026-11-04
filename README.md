@@ -17,7 +17,7 @@ text only. v0.1 is complete and verified on a real iPhone (2026-11-04).
 clipbridge/
   README.md               this file: setup from zero
   CLAUDE.md               project context for Claude Code (decisions, contracts, pitfalls)
-  windows-server/         Python service for the PC (v0.2.0)
+  windows-server/         Python service for the PC (v0.3.0)
   ios/
     ClipBridge.xcodeproj  Xcode 27 project (JSON project format, needs Xcode 27+)
     ClipBridge/           main app: pairing, connection test, setup guide (SwiftUI)
@@ -30,7 +30,7 @@ clipbridge/
 
 | Part | State |
 |---|---|
-| Windows server (`windows-server/`) | v0.2.0: clipboard polling, HTTP API with bearer token, QR pairing, limits reported in `/health` |
+| Windows server (`windows-server/`) | v0.3.0: clipboard polling, HTTP API with bearer token, QR pairing, limits reported in `/health`, clearing the history |
 | iOS main app | done: QR / manual pairing, connection test with hints, keyboard setup guide |
 | iOS keyboard extension | done: last 5 PC items as cards, insert on tap, refresh, send the phone clipboard, space/backspace |
 | iOS share extension | done: text only, posts to the PC, shows the result or the reason it failed |

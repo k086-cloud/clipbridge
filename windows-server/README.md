@@ -1,7 +1,7 @@
 # ClipBridge Windows server
 
 A small Python service that watches the Windows clipboard and shares it over
-HTTP with your phone on the same Wi-Fi. Version 0.2.0 handles plain text
+HTTP with your phone on the same Wi-Fi. Version 0.3.0 handles plain text
 only. The phone side (keyboard + share extension) lives in `../ios`; the
 end-to-end setup is in the [root README](../README.md).
 
@@ -10,7 +10,8 @@ What it does:
 - polls the clipboard every 300 ms and keeps the last 20 text items in memory
   (id, content, timestamp, source `pc` or `phone`);
 - serves a FastAPI app on port 8765 with endpoints to read the latest item,
-  read the history, and push text from the phone onto the PC clipboard;
+  read or clear the history, and push text from the phone onto the PC
+  clipboard;
 - never records a phone paste a second time as a new PC item;
 - generates a random pairing token on first run and requires it as a bearer
   token on every endpoint except `/health`;
@@ -80,6 +81,7 @@ All responses are JSON. Every endpoint except `/health` requires the header
 | GET | `/health` | Service status, version, history size, uptime, and the limits `max_text_bytes` / `history_size` |
 | GET | `/clip/latest` | Newest history item (`404` when there is none yet) |
 | GET | `/clip/history?limit=N` | Newest `N` items, newest first (`N` >= 1; anything above `history_size` is clamped to it; default: all) |
+| DELETE | `/clip/history` | Empties the in-memory history (since 0.3.0); returns `204` with no body. The PC clipboard itself is left alone, and the text already on it is not recorded again until you copy something new |
 | POST | `/clip` | Body `{"content": "text"}`; puts the text on the PC clipboard and records it with source `phone`; returns `201` and the item |
 
 An item looks like:
@@ -93,9 +95,10 @@ An item looks like:
 }
 ```
 
-Error codes: `401` missing or wrong token, `404` empty history, `413` text
-over 100 KB, `422` invalid body or query, `503` the clipboard could not be
-written (another program was holding it; retry).
+Error codes: `401` missing or wrong token, `404` empty history, `405`
+`DELETE /clip/history` on a server older than 0.3.0, `413` text over 100 KB,
+`422` invalid body or query, `503` the clipboard could not be written (another
+program was holding it; retry).
 
 ## Try it from this PC
 
@@ -114,6 +117,7 @@ Invoke-RestMethod "$base/health"
 Invoke-RestMethod "$base/clip/latest" -Headers $headers
 Invoke-RestMethod "$base/clip/history?limit=5" -Headers $headers
 Invoke-RestMethod "$base/clip" -Method Post -Headers $headers -ContentType "application/json" -Body '{"content": "hello from curl"}'
+Invoke-RestMethod "$base/clip/history" -Method Delete -Headers $headers   # empties the history
 ```
 
 curl (Windows ships `curl.exe`; in PowerShell type `curl.exe`, not `curl`):
@@ -123,6 +127,7 @@ curl.exe http://127.0.0.1:8765/health
 curl.exe -H "Authorization: Bearer $token" http://127.0.0.1:8765/clip/latest
 curl.exe -H "Authorization: Bearer $token" "http://127.0.0.1:8765/clip/history?limit=5"
 curl.exe -X POST -H "Authorization: Bearer $token" -H "Content-Type: application/json" -d "{\"content\": \"hello from curl\"}" http://127.0.0.1:8765/clip
+curl.exe -i -X DELETE -H "Authorization: Bearer $token" http://127.0.0.1:8765/clip/history
 ```
 
 After the POST, press `Ctrl+V` anywhere: the text is on the clipboard.
@@ -157,8 +162,12 @@ on Public networks inbound connections are blocked regardless of the rule.
    green) → add the ClipBridge keyboard in Settings and turn on *Allow Full
    Access* → use the keyboard to insert PC clipboard items, and Share →
    ClipBridge to send text to the PC.
-4. After `git pull` on the PC, restart the service; the phone picks up the
-   new `/health` fields and the clamped `limit` automatically.
+4. The app's *清空电脑上的历史* button calls `DELETE /clip/history`; it
+   needs server 0.3.0 or newer (an older server answers `405` and the app
+   asks you to update).
+5. After `git pull` on the PC, stop the service with `Ctrl+C` and start it
+   again; the token in `config.json` stays, so the phone does not need to
+   pair again.
 
 If the phone cannot connect: the phone and the PC must be on the same Wi-Fi
 subnet (campus networks often isolate clients or route between subnets — a
@@ -187,6 +196,14 @@ again).
 pytest
 ```
 
+On a Mac (for development; the server itself is meant for Windows):
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -r requirements-dev.txt
+.venv/bin/python -m pytest
+```
+
 The tests cover the history buffer, config/token handling, bearer-token
 checks, the loop-prevention logic of the clipboard monitor (with a fake
 clipboard) and every API endpoint. They never touch the real clipboard.
@@ -212,4 +229,5 @@ clipboard) and every API endpoint. They never touch the real clipboard.
   that network can read the token and the clipboard text. If you think the
   token leaked, delete `config.json` and restart (a new token is generated),
   then pair the phone again.
-- History lives in memory only and is gone when the server stops.
+- History lives in memory only and is gone when the server stops or the
+  phone clears it.

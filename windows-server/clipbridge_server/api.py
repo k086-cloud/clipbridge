@@ -1,15 +1,16 @@
-"""HTTP API: health, latest item, history, and paste-from-phone.
+"""HTTP API: health, latest item, history, clear history, and paste-from-phone.
 
 No ``from __future__ import annotations`` here: FastAPI must evaluate the
 ``Annotated[..., Query(...)]`` hints, which reference closure variables.
 """
 
+import logging
 import time
 from contextlib import asynccontextmanager
 from typing import Annotated, AsyncIterator
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
 
 from . import __version__
@@ -17,6 +18,8 @@ from .auth import require_token
 from .clipboard import ClipboardError, ClipboardMonitor, text_too_large
 from .config import Config
 from .history import ClipHistory, ClipItem
+
+log = logging.getLogger(__name__)
 
 
 class UTF8JSONResponse(JSONResponse):
@@ -132,6 +135,19 @@ def create_app(
         return HistoryOut(
             items=[ClipOut.from_item(item) for item in history.recent(min(limit, max_items))]
         )
+
+    @app.delete(
+        "/clip/history",
+        status_code=status.HTTP_204_NO_CONTENT,
+        response_class=Response,
+        dependencies=protected,
+    )
+    async def clear_history() -> Response:
+        # Only the history is cleared. The monitor keeps its last-seen text, so
+        # what is already on the PC clipboard is not recorded again on the next poll.
+        removed = history.clear()
+        log.info("History cleared (%d items removed)", removed)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     @app.post(
         "/clip",

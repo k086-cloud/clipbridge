@@ -63,7 +63,7 @@ Windows 电脑 ↔ iPhone 剪贴板同步。Windows 端 Python 服务 + iOS 键�
 ## Windows 端
 
 ### 模块
-- `history.py` — 内存 deque 保留 history_size 条（默认 20）；`ClipItem{id, content, timestamp(ISO 本地时区，精确到毫秒), source: "pc"|"phone"}`，id 为 uuid4 hex
+- `history.py` — 内存 deque 保留 history_size 条（默认 20），`clear()` 清空并返回条数；`ClipItem{id, content, timestamp(ISO 本地时区，精确到毫秒), source: "pc"|"phone"}`，id 为 uuid4 hex
 - `config.py` — `windows-server/config.json`（首次运行生成 token = `secrets.token_urlsafe(32)`；host 0.0.0.0；port 8765；poll_interval_ms 300；max_text_bytes 102400；history_size 20）。**config.json 含 token，已 gitignore，绝不能提交。**
 - `auth.py` — `Authorization: Bearer <token>`，常量时间比较，失败返回 401 + WWW-Authenticate
 - `clipboard.py` — pyperclip 后端；`ClipboardMonitor` 每 300ms 轮询；防回环：「读剪贴板 + 比较 last_seen」和「写剪贴板 + 更新 last_seen」在同一把锁里
@@ -75,6 +75,7 @@ Windows 电脑 ↔ iPhone 剪贴板同步。Windows 端 Python 服务 + iOS 键�
 - `GET /health` — 免鉴权；返回 `{status, version, history_items, monitor_running, uptime_seconds, max_text_bytes, history_size}`（后两个 0.2.0 起才有，iOS 端按可选解析）
 - `GET /clip/latest` — 最新一条，空则 404（iOS 端不用它：404 和「host 指错」分不开，改用 `history?limit=1`）
 - `GET /clip/history?limit=N` — N ≥ 1（0、负数、非数字返回 422），超过 history_size 时截断为 history_size（0.1 版是 422，iOS 端对旧服务端仍有 422 → limit=1 的退化），省略时取全部；最新在前；响应为 `{"items": [...]}`
+- `DELETE /clip/history` — 0.3.0 起；清空内存历史，返回 204、无响应体；只清历史不动 monitor 的 last_seen，所以电脑剪贴板上现有的那条不会被重新记录，要等电脑复制新内容；日志只写清掉几条，不写内容；0.3.0 以前的服务端对它返回 405（路径存在、方法不对，和 token 对错无关）
 - `POST /clip`，body `{"content": "..."}` — 写入电脑剪贴板，记为 source=phone，返回 201；content 为空返回 422；UTF-8 编码超 max_text_bytes（默认 102400 字节）返回 413；写剪贴板失败返回 503
 - 除 /health 外都要 `Authorization: Bearer <token>`，否则 401
 - 配对二维码内容：`clipbridge://pair?host=<ip>&port=<port>&token=<token>`
@@ -82,7 +83,8 @@ Windows 电脑 ↔ iPhone 剪贴板同步。Windows 端 Python 服务 + iOS 键�
 ### 开发命令（在 windows-server/ 下）
 - 建环境：`python -m venv .venv`，然后 `.venv\Scripts\pip install -r requirements.txt`（跑测试还需 `.venv\Scripts\pip install -r requirements-dev.txt`，含 pytest、httpx）
 - 启动：`.venv\Scripts\python.exe -m clipbridge_server`
-- 测试：`.venv\Scripts\python.exe -m pytest`（剪贴板用 FakeClipboard mock，不碰真实剪贴板；Mac 上也能跑）
+- 测试：`.venv\Scripts\python.exe -m pytest`（剪贴板用 FakeClipboard mock，不碰真实剪贴板）
+- Mac 上也能跑测试（pyperclip 跨平台）：`python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt`，然后 `.venv/bin/python -m pytest`；真实剪贴板行为以 Windows 上的验收为准
 - 改了 API 或防回环逻辑必须补测试，全部通过再提交
 
 ### 已知坑
