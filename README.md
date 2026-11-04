@@ -31,7 +31,7 @@ clipbridge/
 | Part | State |
 |---|---|
 | Windows server (`windows-server/`) | v0.3.0: clipboard polling, HTTP API with bearer token, QR pairing, limits reported in `/health`, clearing the history |
-| iOS main app | done: QR / manual pairing, connection test with hints, keyboard setup guide |
+| iOS main app | done: QR / manual pairing, connection test with hints, keyboard setup guide, clearing the PC history (needs server 0.3.0+) |
 | iOS keyboard extension | done: last 5 PC items as cards, insert on tap, refresh, send the phone clipboard, space/backspace |
 | iOS share extension | done: text only, posts to the PC, shows the result or the reason it failed |
 
@@ -103,6 +103,15 @@ shows *已发送到电脑* and closes; press Ctrl+V on the PC. ClipBridge only
 appears when the shared item is text. The first time, it may be hidden under
 *More* in the share sheet's app row.
 
+### 6. Clear the history on the PC
+
+The PC keeps the last texts in memory (20 by default; the keyboard shows
+the newest 5 as cards). To wipe them, open the ClipBridge app → *清空电脑上的历史* → confirm.
+The PC clipboard itself is not touched, and the keyboard stays empty until
+something new is copied on the PC. This needs server 0.3.0 or newer; with an
+older one the app says to update it (`git pull` on the PC and restart the
+service).
+
 ## Free Apple ID (Personal Team) limits
 
 - Provisioning profiles expire after **7 days**: the app, keyboard and share
@@ -127,8 +136,8 @@ shared or public Wi-Fi. To rotate the token, delete
 ## Development
 
 - Windows side: see [windows-server/README.md](windows-server/README.md)
-  (`pytest` for the tests).
-- iOS shared package: `cd ios/ClipBridgeKit && swift test` runs the 83 unit
+  (`pytest` for the tests; they also run on the Mac).
+- iOS shared package: `cd ios/ClipBridgeKit && swift test` runs the unit
   tests on the Mac without a simulator (network is mocked, Keychain uses an
   in-memory store).
 - Build everything for a device from the command line:
