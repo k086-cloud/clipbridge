@@ -3,7 +3,7 @@ import ClipBridgeKit
 import Observation
 import SwiftUI
 
-/// 主 App 的状态：配对信息、待确认的配对、连接测试结果。所有方法都在主线程（App target 默认 MainActor）。
+/// 主 App 的状态：配对信息、待确认的配对、连接测试结果、清空电脑历史的结果。所有方法都在主线程（App target 默认 MainActor）。
 @Observable
 final class AppModel {
     let store: any PairingStore
@@ -16,6 +16,7 @@ final class AppModel {
     /// 扫码或链接解析失败的说明，用来弹提示。
     var pairingInputError: String?
     private(set) var connectionTest: ConnectionTest = .idle
+    private(set) var historyClear: HistoryClear = .idle
     /// 由 RootView 用 scenePhase 喂进来。系统权限弹窗出现时 scene 会变成 inactive，回到 active 说明用户已经回答。
     var scenePhase: ScenePhase = .active
 
@@ -24,6 +25,9 @@ final class AppModel {
     @ObservationIgnored private var testTask: Task<Void, Never>?
     /// 每次开始/取消测试都加一，旧测试的结果对不上代数就丢掉——解除配对或重新配对后不会冒出上一台电脑的报告。
     @ObservationIgnored private var testGeneration = 0
+    @ObservationIgnored private var clearTask: Task<Void, Never>?
+    /// 和 testGeneration 同理：解除配对或重新配对后，上一台电脑的清空结果不再显示。
+    @ObservationIgnored private var clearGeneration = 0
 
     init(store: any PairingStore, configurationError: String? = nil) {
         self.store = store
@@ -84,13 +88,47 @@ final class AppModel {
     func pair(_ info: PairingInfo) throws {
         try store.save(info)
         cancelConnectionTest()
+        cancelHistoryClear()
         refresh()
     }
 
     func unpair() throws {
         try store.clear()
         cancelConnectionTest()
+        cancelHistoryClear()
         refresh()
+    }
+
+    // MARK: 清空电脑上的历史
+
+    /// DELETE /clip/history。只清电脑内存里的记录，不动电脑当前的剪贴板。确认框在界面里弹，这里不再问。
+    func clearPCHistory() {
+        guard let info = pairingInfo else {
+            return
+        }
+        cancelHistoryClear()
+        let generation = clearGeneration
+        historyClear = .running
+        let client = ClipBridgeClient(pairing: info, session: session)
+        clearTask = Task {
+            do {
+                try await client.clearHistory()
+                guard generation == clearGeneration else { return }
+                historyClear = .succeeded
+                // 连接测试里「已记录 N 条」已经过时，收起来免得和「已清空」矛盾
+                cancelConnectionTest()
+            } catch {
+                guard !Task.isCancelled, generation == clearGeneration else { return }
+                historyClear = .failed(message: error.localizedDescription, hint: Self.hint(for: error, port: info.port))
+            }
+        }
+    }
+
+    private func cancelHistoryClear() {
+        clearTask?.cancel()
+        clearTask = nil
+        clearGeneration += 1
+        historyClear = .idle
     }
 
     // MARK: 测试连接
@@ -205,6 +243,8 @@ final class AppModel {
             return "重新扫描电脑上的二维码，或在「手动输入」里改正 token。电脑端重新生成 config.json 后 token 会变。"
         case .notFound, .invalidResponse:
             return "检查 host 和端口是否指向运行 ClipBridge 服务的电脑（终端里打印的 Health URL 在 Safari 能打开才对）。"
+        case .serverOutdated:
+            return "去电脑上更新 ClipBridge 服务：按 Ctrl+C 停掉服务，git pull，再重新启动（需要 0.3.0 或更新）。不用重新配对。"
         default:
             break
         }
@@ -241,6 +281,18 @@ enum ConnectionTest: Equatable {
     var isRunning: Bool {
         if case .running = self { return true }
         return false
+    }
+}
+
+enum HistoryClear: Equatable {
+    case idle
+    case running
+    case succeeded
+    /// message 是错误本身，hint 是下一步怎么做（和连接测试共用 `AppModel.hint(for:port:)`）。
+    case failed(message: String, hint: String?)
+
+    var isRunning: Bool {
+        self == .running
     }
 }
 

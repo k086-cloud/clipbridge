@@ -9,6 +9,7 @@ struct RootView: View {
     @State private var showScanner = false
     @State private var showManualEntry = false
     @State private var showUnpairConfirmation = false
+    @State private var showClearHistoryConfirmation = false
     @State private var actionError: String?
     /// 扫到的码先存着，等扫码 sheet 完全关闭（onDismiss）再交给 model：同一次渲染里关一个 sheet 又开另一个会被 SwiftUI 丢掉。
     @State private var scannedCode: String?
@@ -57,6 +58,29 @@ struct RootView: View {
                 if let report = model.connectionTest.report {
                     Section("连接测试") {
                         ConnectionReportView(report: report, isRunning: model.connectionTest.isRunning)
+                    }
+                }
+
+                if model.pairingInfo != nil {
+                    Section {
+                        Button(role: .destructive) {
+                            showClearHistoryConfirmation = true
+                        } label: {
+                            Label("清空电脑上的历史", systemImage: "trash")
+                        }
+                        .disabled(model.historyClear.isRunning)
+                        // 挂在按钮上而不是外层：外层已经有「解除配对」的确认框和两个 alert
+                        .confirmationDialog("清空电脑上记录的全部内容？键盘里的卡片会一起消失，不能撤销。", isPresented: $showClearHistoryConfirmation, titleVisibility: .visible) {
+                            Button("清空", role: .destructive) {
+                                model.clearPCHistory()
+                            }
+                            Button("取消", role: .cancel) {}
+                        }
+                        HistoryClearStatusView(state: model.historyClear)
+                    } header: {
+                        Text("电脑上的历史")
+                    } footer: {
+                        Text("只清空电脑内存里的记录（也就是键盘里的卡片），不动电脑当前的剪贴板。清空后要等电脑复制新内容，键盘里才会出现新卡片。")
                     }
                 }
 
@@ -167,6 +191,37 @@ struct PairingStatusView: View {
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                 Text("重新扫码或手动输入一次即可修复。")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
+struct HistoryClearStatusView: View {
+    let state: HistoryClear
+
+    var body: some View {
+        switch state {
+        case .idle:
+            EmptyView()
+        case .running:
+            HStack {
+                ProgressView()
+                Text("正在清空…")
+            }
+        case .succeeded:
+            VStack(alignment: .leading, spacing: 2) {
+                Label("已清空电脑上的历史", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+                Text("键盘点「刷新」后不会再有旧卡片。").font(.footnote).foregroundStyle(.secondary)
+            }
+        case let .failed(message, hint):
+            VStack(alignment: .leading, spacing: 2) {
+                Label("清空失败", systemImage: "xmark.circle.fill").foregroundStyle(.red)
+                Text(message).font(.footnote).foregroundStyle(.secondary)
+            }
+            if let hint {
+                Label(hint, systemImage: "lightbulb")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
