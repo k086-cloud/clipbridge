@@ -9,6 +9,8 @@ extension ClipBridgeError: LocalizedError {
             return "token 不对，电脑拒绝了请求（401）"
         case .notFound:
             return "这个地址上不是 ClipBridge 服务（404）"
+        case .serverOutdated:
+            return "电脑上的 ClipBridge 服务版本太旧，不支持这个操作（405）"
         case let .payloadTooLarge(detail):
             return detail.isEmpty ? "内容太大，电脑拒收（413）" : "内容太大，电脑拒收（413）：\(detail)"
         case let .unprocessable(detail):

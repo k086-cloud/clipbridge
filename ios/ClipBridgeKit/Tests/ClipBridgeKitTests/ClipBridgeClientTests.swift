@@ -219,6 +219,45 @@ final class ClipBridgeClientTests: XCTestCase {
         await assertThrows(.clipboardUnavailable("clipboard is locked")) { try await self.client.send("x") }
     }
 
+    // MARK: clearHistory
+
+    func testClearHistorySendsAuthorizedDeleteAndAccepts204() async throws {
+        MockURLProtocol.handler = { _ in (204, Data()) }
+        try await client.clearHistory()
+        XCTAssertEqual(MockURLProtocol.requests.count, 1)
+        let request = try XCTUnwrap(MockURLProtocol.requests.first)
+        XCTAssertEqual(request.method, "DELETE")
+        XCTAssertEqual(request.url.absoluteString, "http://192.168.1.10:8765/clip/history")
+        XCTAssertNil(request.query)
+        XCTAssertEqual(request.headers["Authorization"], "Bearer secret-token")
+        XCTAssertTrue(request.body?.isEmpty ?? true)
+    }
+
+    func testClearHistoryMapsUnauthorized() async {
+        MockURLProtocol.handler = { _ in (401, json(#"{"detail":"Missing or invalid bearer token."}"#)) }
+        await assertThrows(.unauthorized) { try await self.client.clearHistory() }
+    }
+
+    func testClearHistoryOnServerBefore030IsServerOutdated() async {
+        // 0.2.0 实测：/clip/history 只有 GET，DELETE 一律 405（带 Allow: GET），token 对不对都一样
+        MockURLProtocol.handler = { _ in (405, json(#"{"detail":"Method Not Allowed"}"#)) }
+        await assertThrows(.serverOutdated) { try await self.client.clearHistory() }
+        XCTAssertEqual(MockURLProtocol.requests.count, 1)
+    }
+
+    func testClearHistoryOn404IsNotFound() async {
+        MockURLProtocol.handler = { _ in (404, json(#"{"detail":"Not Found"}"#)) }
+        await assertThrows(.notFound) { try await self.client.clearHistory() }
+    }
+
+    func testClearHistoryWhenThePCIsUnreachable() async {
+        for code in [URLError.Code.cannotConnectToHost, .timedOut] {
+            MockURLProtocol.handler = { _ in throw URLError(code) }
+            await assertThrows(.transport(code)) { try await self.client.clearHistory() }
+            XCTAssertTrue(ClipBridgeError.transport(code).isUnreachable)
+        }
+    }
+
     // MARK: transport
 
     func testTransportErrorsAreWrapped() async {

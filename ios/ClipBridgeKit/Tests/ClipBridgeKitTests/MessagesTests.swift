@@ -4,7 +4,7 @@ import XCTest
 final class MessagesTests: XCTestCase {
     func testEveryClipBridgeErrorHasAMessage() {
         let errors: [ClipBridgeError] = [
-            .unauthorized, .notFound, .payloadTooLarge(""), .payloadTooLarge("Text exceeds the 1024 byte limit."), .unprocessable(""), .unprocessable("x"),
+            .unauthorized, .notFound, .serverOutdated, .payloadTooLarge(""), .payloadTooLarge("Text exceeds the 1024 byte limit."), .unprocessable(""), .unprocessable("x"),
             .clipboardUnavailable(""), .unexpectedStatus(500), .contentEmpty, .contentTooLarge(bytes: 2, limit: 1),
             .invalidURL, .invalidResponse, .transport(.notConnectedToInternet), .transport(.timedOut),
             .transport(.badServerResponse), .underlying(domain: NSPOSIXErrorDomain, code: 1), .underlying(domain: "x", code: 9),
@@ -14,6 +14,7 @@ final class MessagesTests: XCTestCase {
         }
         XCTAssertTrue(ClipBridgeError.transport(.notConnectedToInternet).localizedDescription.contains("本地网络"))
         XCTAssertTrue(ClipBridgeError.underlying(domain: NSPOSIXErrorDomain, code: 1).localizedDescription.contains("允许完全访问"))
+        XCTAssertTrue(ClipBridgeError.serverOutdated.localizedDescription.contains("版本太旧"))
     }
 
     func testKeychainAndPairingErrorsHaveMessages() {

@@ -85,6 +85,14 @@ public struct ClipBridgeClient: Sendable {
         }
     }
 
+    /// DELETE /clip/history（服务端 0.3.0 起），清空电脑内存里的历史，成功是 204 无响应体。
+    /// 只清历史，不动电脑当前的剪贴板；电脑复制新内容后才会再有记录。旧服务端返回 405 → `.serverOutdated`。
+    public func clearHistory() async throws {
+        let request = try makeRequest(method: "DELETE", path: "/clip/history")
+        let (data, response) = try await perform(request)
+        try check(response, data)
+    }
+
     /// POST /clip {"content": text}，写进电脑剪贴板。空内容和超长内容在本地先拦。
     public func send(_ text: String) async throws {
         guard !text.isEmpty else {
@@ -161,6 +169,7 @@ public struct ClipBridgeClient: Sendable {
         switch response.statusCode {
         case 401: throw ClipBridgeError.unauthorized
         case 404: throw ClipBridgeError.notFound
+        case 405: throw ClipBridgeError.serverOutdated
         case 413: throw ClipBridgeError.payloadTooLarge(message)
         case 422: throw ClipBridgeError.unprocessable(message)
         case 503: throw ClipBridgeError.clipboardUnavailable(message)
