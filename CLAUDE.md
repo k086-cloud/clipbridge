@@ -106,12 +106,13 @@ API 密钥只放 .env，不写进任何文件或对话。
 
 ## iOS 端
 
-### 实测结论（v0.1 各阶段真机验证，长期有效）
+### 实测结论（v0.1 各阶段和 v0.2 真机验证，长期有效）
 - 阶段 0 签名与 capability：免费 Personal Team（Team ID `L24ST657GM`）+ Xcode 27.2 下 **App Groups 和 Keychain Sharing 都能用**，codesign 实测 .app 和两个 .appex 都带 `application-groups` 和 `keychain-access-groups`；Bundle ID 注册判重不区分大小写（小写注册失败后用了大写）；Xcode 27.2 只能给 iOS 17+ 真机装调试包，部署目标 17.6；工程文件是 JSON 的 `.xcproj`
 - 阶段 1 ClipBridgeKit：本地包静态链接到三个 target；测试在 Mac 上用 `swift test` 跑（网络用 MockURLProtocol，Keychain 用内存实现）
 - 阶段 2 主 App：扫码配对、确认页、测试连接两行全绿、401 / 连不上的提示、系统相机扫 clipbridge:// 二维码弹「Open in ClipBridge」直达确认页、AppIdentifierPrefix 展开、`live()` 和 Keychain 写入都正常。**「本地网络」弹窗没测到**：手机和电脑在不同子网、流量经路由转发时，iOS 不把它当本地网络（TN3179 的定义），不弹窗、不受限、设置里也没有条目
 - 阶段 3 键盘：没开「允许完全访问」时能读 App Group 的地址并提示去开；开了之后拉取 5 条卡片、点卡片插入全文、刷新、发送剪贴板（弹「允许粘贴」）都正常
 - 阶段 4 共享扩展：Safari 选中文字 → 分享 → ClipBridge，电脑 Ctrl+V 得到干净正文。第一版把 Safari 给的 bplist 归档当 UTF-16 解成「扰汩猿」乱码发了出去，已修（见「各 target 实现要点」）
+- v0.2 清空历史（2026-11-05 真机，iOS 26.6.1，Windows 服务 0.2.0 → 0.3.0）：B 到 H 全部通过。0.2.0 服务端对 `DELETE /clip/history` 不论 token 对错都回 405（路由层先于鉴权），App 显示「…版本太旧，不支持这个操作（405）」并提示去电脑上 git pull 后重启。停掉服务时这台 Windows 的防火墙静默丢包，App / 键盘 / 共享扩展都要等请求超时（主 App 5 s、键盘 3 s、共享扩展 8 s）才报「连接超时，电脑没有回应」，不是立即报「连不上电脑的这个端口」。iOS 26 上 `confirmationDialog` 显示成从按钮弹出的小框；解除配对的确认框代码里没写取消按钮，真机上只显示红色「解除配对」，点框外关闭
 - 验收环境 iPhone 17 Pro Max，iOS 26.6.1；无害的控制台日志：首次访问 App Group UserDefaults 的 CFPrefs「detaching from cfprefsd」、相机关闭时的 FigCaptureSourceRemote err=-17281
 
 ### 每 7 天重装（免费账号）
@@ -174,7 +175,7 @@ API 密钥只放 .env，不写进任何文件或对话。
 
 ### 已知坑
 - 本地网络权限按 App 记录、扩展继承；必须由主 App 前台先触发（「测试连接」）；iOS 18 起没有 NSLocalNetworkUsageDescription 弹窗不出现；被拒表现为 URLError -1009；只有直连同一 Wi-Fi 子网才算「本地」，经路由转发的流量不弹窗也不受限；模拟器不支持，只能真机测
-- 键盘没开完全访问时禁一切网络；Keychain 能否读 Apple 没写，以 `hasFullAccess` 为准，不用 Keychain 失败推断
+- 键盘没开完全访问时禁一切网络，共享 Keychain 也读不了：2026-11-05 真机（iOS 26.6.1）关掉完全访问后，键盘每次出现，系统日志都记 TCC `XPC_ERROR_CONNECTION_INVALID` 和 securityd `Failed to talk to securityd after 4 attempts`，即键盘连不上 securityd。具体 OSStatus 没录到（键盘 Keychain probe 那行是 info 级，xctrace 录不到，见「工程与工具」）。所以以 `hasFullAccess` 为准、没开时不连网、不拿 Keychain 结果做判断的做法是对的（那次 probe 只记日志）
 - 内存：键盘约 50–70 MB、共享扩展约 120 MB，超了静默被杀；键盘只显示截断文本、不缓存
 - 分享面板给的「纯文本」可能是 bplist 归档；任何从 NSItemProvider / 剪贴板拿到的 Data 都要过 `SharedTextDecoder`，解不开就报错，绝不原样发送
 - token 和剪贴板内容在局域网内明文传输，只在家用 Wi-Fi 或手机热点下用；怀疑泄露就删 config.json 重启重配
