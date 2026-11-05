@@ -115,7 +115,14 @@ API 密钥只放 .env，不写进任何文件或对话。
 - 验收环境 iPhone 17 Pro Max，iOS 26.6.1；无害的控制台日志：首次访问 App Group UserDefaults 的 CFPrefs「detaching from cfprefsd」、相机关闭时的 FigCaptureSourceRemote err=-17281
 
 ### 每 7 天重装（免费账号）
-- 描述文件 7 天过期（本轮到期日见 PROGRESS.md「定期事项」），到期后 App、键盘、共享扩展一起打不开。连上 iPhone，Xcode 运行目标选这台 iPhone，⌘R 覆盖安装即可；键盘的启用状态和「允许完全访问」开关保留，配对信息保留（App Group 和 Keychain 都不动）
+- 描述文件 7 天过期（本轮到期日见 PROGRESS.md「定期事项」），到期后 App、键盘、共享扩展一起打不开。连上 iPhone 覆盖安装即可（Xcode 运行目标选这台 iPhone 按 ⌘R，或用下面的命令行）；键盘的启用状态和「允许完全访问」开关保留，配对信息保留（App Group 和 Keychain 都不动）
+- 命令行装机（2026-11-05 实测可用，代替 Xcode ⌘R）：iPhone 数据线连 Mac 并解锁，在仓库根目录依次执行
+  - 编译：`xcodebuild -project ios/ClipBridge.xcodeproj -scheme ClipBridge -configuration Debug -destination 'id=<UDID>' -allowProvisioningUpdates build`
+  - 安装：`xcrun devicectl device install app --device <UDID> ~/Library/Developer/Xcode/DerivedData/ClipBridge-*/Build/Products/Debug-iphoneos/ClipBridge.app`
+  - 启动：`xcrun devicectl device process launch --device <UDID> --terminate-existing com.charleschen.ClipBridge`
+  - 查到期日：`security cms -D -i ~/Library/Developer/Xcode/DerivedData/ClipBridge-*/Build/Products/Debug-iphoneos/ClipBridge.app/embedded.mobileprovision | plutil -extract ExpirationDate raw -o - -`（UTC）
+  - `<UDID>` 从 `xcrun devicectl list devices` 看；用 UDID 不用设备名（设备名可能和 Mac 本机名撞，xctrace 实测报 ambiguous）
+- 提前重装不会顺延：描述文件没到期前重装，签进包里的还是原来那份（2026-11-05 重装后 embedded.mobileprovision 仍是 11-03 签发，到期日没变），Xcode 只在快过期或已过期时才重新签发。到期后命令行的 `-allowProvisioningUpdates` 能不能自动续签还没验证，不行就退回 Xcode ⌘R
 - 其他限制：每周最多注册 10 个 App ID（本项目占 3 个，**Bundle ID 绝不改名**）、3 台设备、每台 3 个 App（扩展可能计数，手机上别装其他免费签名的 App）；没有 TestFlight
 
 ### Target 与 Bundle ID（已注册到 Personal Team，绝不要改名）
@@ -156,7 +163,13 @@ API 密钥只放 .env，不写进任何文件或对话。
 - 验证构建：`xcodebuild -project ios/ClipBridge.xcodeproj -scheme ClipBridge -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build`；真机 SDK 用 `-sdk iphoneos -destination 'generic/platform=iOS' -allowProvisioningUpdates`
 - 三个 target 都是 Swift 5 语言模式 + Approachable Concurrency；只有主 App target 默认 MainActor 隔离，两个扩展默认 nonisolated。Kit 的 PairingStore/EndpointStore/TokenStore 都继承 Sendable，App 侧自写实现要么是只含 let 的 struct，要么是带锁的 `final class … @unchecked Sendable`
 - ClipBridgeKit 已作为本地包静态链接到三个 target（`ClipBridgeKit.o` 各链一份）；ios/ClipBridgeKit 必须和 ClipBridge.xcodeproj 同级，不能移进三个同步文件夹里；三个 target 目录是同步文件夹，新文件自动编进去
-- 分工：Xcode 图形界面的事（新建 target、capability、Package 链接、⌘R 装机）由人做；代码、Info.plist、工程构建设置由 Claude 改文件后用 xcodebuild 验证
+- 分工：装机可以由 Claude 用命令行做（见「每 7 天重装」，前提是手机插线、解锁）；新建 target、capability、Package 链接仍在 Xcode 图形界面里由人做；代码、Info.plist、工程构建设置由 Claude 改文件后用 xcodebuild 验证
+- 从 Mac 抓 iPhone 日志（2026-11-05 实测）：手机插线、解锁，不用 sudo；只录开始以后的日志，先开录再操作手机
+  - 录制：`xcrun xctrace record --template Logging --device <UDID> --all-processes --time-limit 1m --no-prompt --output <仓库外的目录>/x.trace`
+  - 导出：`xcrun xctrace export --input <仓库外的目录>/x.trace --xpath '/trace-toc/run[@number="1"]/data/table[@schema="os-log"]' --output <仓库外的目录>/x.xml`，再 grep
+  - 录的是整台手机所有 App 的日志：放仓库外，用完就删。时间别太长：5 分钟的录制收尾保存花了约 9 分钟，1 分钟左右够用
+  - 系统 subsystem 的 info 级录得到，本项目 `com.charleschen.ClipBridge` 的 info 级一条没录到（键盘 Keychain probe 那行没出现，而系统日志证明那段代码执行了）。要用 xctrace 看自己的日志，得用 `.notice` 或更高级别
+  - 不用的办法：`log collect --device` 要 sudo（zsh 里裸写 `log` 是内建命令，要写 `/usr/bin/log`）；`xcrun devicectl device sysdiagnose` 实测报错
 - Xcode 27 新建工程默认创建嵌套 git 仓库，建工程时取消勾选（仓库里不应有 ios/.git）
 
 ### 已知坑
