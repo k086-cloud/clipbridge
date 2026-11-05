@@ -44,7 +44,7 @@
   2. ClipBridgeKit 的 `swift test` 全部通过（clearHistory 覆盖 204、401、服务端太旧、连不上）
   3. 真机（Windows 上 pull 并重启服务后）：主 App 点按钮 → 确认 → 提示成功，键盘刷新后没有卡片、空状态显示正常；点取消不清空；清空后电脑不复制新内容，键盘就一直是空的，复制一条后键盘里只出现这一条；停掉服务时点按钮，显示连接失败的提示；Windows 还没更新时点按钮，提示去更新电脑上的服务
   4. 同一次真机测试顺便做：重装续期（这次试命令行 xcodebuild + devicectl，不行退回 Xcode ⌘R；更新「定期事项」的到期日），以及待补测第 2、4、5、6 项
-- 进度：代码 + 文档 ✅（服务端 86 个测试、Kit 89 个测试全过；模拟器和 iphoneos 签名编译通过）→ push（等确认）→ 真机测试（未开始）
+- 进度：代码 + 文档 ✅（服务端 86 个测试、Kit 89 个测试全过；模拟器和 iphoneos 签名编译通过）→ push ✅（2026-11-05，3bb3fac）→ 真机测试（进行中：A ✅）
 
 ### 待补测（v0.1 真机补测，不影响日常使用；都在 Mac + iPhone 上做，Windows 服务开着）
 1. **「本地网络」权限弹窗和拒绝后的 -1009 提示**
@@ -75,7 +75,9 @@
 - 2026-11-03 发布 v0.1.0：Windows 服务 + iOS 主 App / 键盘 / 共享扩展，双向真机验收通过
 
 ## 定期事项
-- 免费账号的描述文件 7 天过期，本轮到期日 **2026-11-10**。到期后 App、键盘、共享扩展一起打不开：连上 iPhone，在 Xcode 里 ⌘R 覆盖安装即可，配对信息和键盘设置都保留。每次重装后到期日顺延 7 天，重装后更新这里的日期
+- 免费账号的描述文件 7 天过期，本轮到期 **2026-11-10 06:11 UTC（美东 01:11）**。到期后 App、键盘、共享扩展一起打不开，要重装；配对信息和键盘设置都保留
+- **到期前重装不会顺延**：2026-11-05 用命令行重装，`embedded.mobileprovision` 仍是 11-03 签发、11-10 到期（Xcode 只在描述文件快过期或已过期时才重新签发）。所以要等到期后再重装，到时顺便试命令行能不能自己续签（`xcodebuild … -allowProvisioningUpdates` 能否拿到新描述文件），不行再用 Xcode ⌘R
+- 命令行装机（2026-11-05 实测可用，代替 ⌘R）：手机插线解锁 → `xcodebuild -project ios/ClipBridge.xcodeproj -scheme ClipBridge -configuration Debug -destination 'id=<UDID>' -allowProvisioningUpdates build` → `xcrun devicectl device install app --device char <DerivedData>/Build/Products/Debug-iphoneos/ClipBridge.app` → `xcrun devicectl device process launch --device char --terminate-existing com.charleschen.ClipBridge`。装完查到期日：`security cms -D -i <ClipBridge.app>/embedded.mobileprovision | plutil -extract ExpirationDate raw -o - -`，重装后更新这里的日期
 
 ## 待排期（v0.2 及以后，只是候选，顺序未定）
 - 跨网络使用：手机和电脑不在同一网络时也能用。现在 token 和内容是明文 HTTP，只适合局域网，要和 HTTPS 一起解决
