@@ -1,7 +1,7 @@
 # ClipBridge
 
 Clipboard sync between a Windows PC and an iPhone on the same Wi-Fi, plain
-text only. v0.1 is complete and verified on a real iPhone (2026-11-04).
+text only. v0.1 is complete and verified on a real iPhone (2026-11-03).
 
 - **PC → phone**: a custom iOS keyboard shows the last 5 things copied on the
   PC; tap a card to insert it into whatever you are typing.
