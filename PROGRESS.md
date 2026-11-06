@@ -2,164 +2,90 @@
 
 本文件是项目的总台账：目标、阶段、任务、状态和决策记录都以这里为准。协作规则和代码规则见 CLAUDE.md，使用步骤见 README.md。
 
-本项目在 Claude Code 里协作：导演会话（主会话）负责规划、派任务、审查并维护本文件；executor 子代理（`.claude/agents/executor.md`）负责改代码、自测、汇报。真机和 Windows 上的操作由维护者动手，导演给步骤。
+协作方式（2026-11-06 起）：导演在 claude.ai 的项目对话里；Claude Code 负责规划和执行，先说计划、维护者确认后再写代码，每个任务结束时输出「给导演的汇报」。真机和 Windows 上的操作由维护者动手，Claude Code 给步骤。
 
-任务标注说明：每个任务写内容、难度（高 / 中 / 低）和验收标准；导演用 Fable，executor 用 Opus，Ultracode 默认关，需要变化时才在任务里写明。
+任务标注：难度（高 / 中 / 低）和验收标准必写；模型和强度默认不写（固定 Opus 高），要切 Fable 或调强度时才写；Ultracode 默认关，要开时才写。
 
 ## 电脑分工
-- Mac：主要开发都在这台，包括 iOS 和 Windows 服务的代码，以及 Xcode 编译、真机安装
-- Windows：只运行服务、做最终测试。服务端代码改动后，测试前在 Windows 上 `git pull` 并重启服务
-- 服务端测试在 Mac 上也能跑（pyperclip 跨平台，测试用 FakeClipboard）；真实剪贴板行为以 Windows 上的验收为准
-- 换电脑前：当前这台先 commit 并 push（push 前要维护者确认），另一台开工前先 `git pull`
-- `.env` 每台各放一份，不进 git
+- Mac：开发都在这台（iOS 和服务端代码、Xcode 编译、真机安装）。服务端测试在 Mac 上也能跑（pyperclip 跨平台，测试用 FakeClipboard）
+- Windows：只跑服务做联调，真实剪贴板行为以这台为准。服务端代码改了之后，先在 Windows 上 `git pull` 再重启服务
+- 换电脑前：当前这台先 commit 并 push（push 前要维护者确认），另一台先 `git pull`；`.env` 每台各放一份，不进 git
 
 ## 目标
-在 Windows 电脑和 iPhone 之间同步纯文本剪贴板。两个方向都在 iPhone 上操作，电脑照常复制、粘贴。
+自己用 + 简历，不做商业化。在 Windows 电脑和 iPhone 之间同步纯文本剪贴板，两个方向都在 iPhone 上操作，电脑照常复制、粘贴：
 - 电脑 → 手机：iPhone 上切到 ClipBridge 键盘，点卡片插入电脑最近复制的内容
-- 手机 → 电脑：iPhone 上选中文字 → 分享 → ClipBridge，电脑直接 Ctrl+V
+- 手机 → 电脑：iPhone 上选中文字 → 分享 → ClipBridge，电脑上直接 Ctrl+V
 
-架构：Windows 端 Python 服务（FastAPI）+ iOS 主 App（配对、测试连接）+ 键盘扩展 + 共享扩展，三个 iOS target 共用本地包 ClipBridgeKit。
-
-扩展目标（2026-11-06 维护者加入，顺序待定，细节见「路线图」）：
-- 给别人用：别人在自己的电脑上装服务，用自己的 iPhone 配对使用
-- iPad：iPad 和电脑之间也能互传，两个方向和 iPhone 一样
-- Mac → Windows：Mac 上复制的内容能传到 Windows
+架构：Windows 端 Python 服务（FastAPI）+ iOS 主 App（配对、测试连接、清空电脑历史）+ 键盘扩展 + 共享扩展，三个 iOS target 共用本地包 ClipBridgeKit。
 
 ## 当前状态
-- v0.1.0 已于 2026-11-03 发布（标签 `v0.1.0`，仓库公开），双向主功能都在真机上验收通过
-- v0.2「清空历史」已完成（Phase 1）：Windows 上运行的服务已更新到 0.3.0，真机全部验收通过
-- Phase 2 三条小修已完成（2026-11-06 真机验收通过）
-- 进行中：Phase 3「iPad + 键盘回车键」（2026-11-06 维护者确认，任务见下）。iPad 有，但暂时不在手边：先在模拟器上做完、验完布局，iPad 真机验收等它到手
+- 功能开发已停（2026-11-06）：停在 v0.1.0 + v0.2 清空历史（服务 0.3.0）+ Phase 2 三条小修，全部在真机上验收通过。之后只做维护（续签）和简历材料
+- Phase 3（iPad + 键盘回车键）已取消。做了一半的 iPad 改动存在本地分支 `wip/ipad-phase3`：没有编译验证，也没有审查，不合并
+- 本地 main 比 origin/main 多几个文档提交，还没 push（以 `git status -sb` 为准）
 
-## 交接摘要（2026-11-06，Phase 2 结束时写）
-- 协作方式：Claude Code 里的导演会话 + executor 子代理（`.claude/agents/executor.md`），executor 类型可直接派；一个 executor 依次做几条小任务、每条一个 commit 的做法顺利
-- push：每次都要先问维护者（仓库公开）。Phase 2 结束时本地比 origin/main 多的提交是否已推，以 `git status -sb` 为准
-- 真机测试经验：先在 Mac 上 `curl http://<电脑 IP>:8765/health`。维护者不在电脑旁时 Windows 服务也可能连得上（2026-11-06 就是），这时不需要在电脑上操作的项都能先验；描述文件没到期时提前用命令行装新版做验收没问题，只是不续期；看手机日志用 xctrace，本项目自己的日志要 `.notice` 以上才录得到
-- 描述文件 2026-11-10 06:11 UTC 到期，到期后重装时顺便验证命令行能否自动续签（见「定期事项」）
-- Phase 3（2026-11-06 已确认，在做）：先做 iPad，小项只并进键盘回车键；长按连删、共享扩展支持网址留在「待排期」。任务和验收标准见「任务 → Phase 3」
+## 交接摘要（2026-11-06，换成 claude.ai 导演时写）
+- 新的协作方式见 CLAUDE.md「协作规则」。原来的导演会话 + executor 子代理不再用；`.claude/agents/executor.md` 还在仓库里，删不删等维护者定
+- 描述文件 2026-11-10 06:11 UTC 到期，到期后 App、键盘、共享扩展一起打不开。「每周自动续签」要在这之前跑通一次
+- 真机测试经验：先在 Mac 上 `curl http://<电脑 IP>:8765/health`。Windows 服务连得上时，不需要在电脑旁操作的项都能先验。看手机日志用 xctrace，本项目自己的日志要 `.notice` 以上才录得到（见 CLAUDE.md「工程与工具」）
 
-## 阶段（v0.1 全部完成）
-- [x] Windows v0.1：Python 服务（纯文本）
-- [x] iOS 0：Xcode 工程、签名、capability
-- [x] iOS 1：ClipBridgeKit（网络层、配对解析、存储）
-- [x] iOS 2：主 App（扫码 / 手动配对、测试连接）
-- [x] iOS 3：键盘扩展（电脑 → 手机）
-- [x] iOS 4：共享扩展（手机 → 电脑）
-- [x] iOS 5：收尾（README、CLAUDE.md 定稿）
+## 阶段
+- [x] v0.1（2026-11-03 发布 v0.1.0）：Windows 服务、Xcode 工程与 capability、ClipBridgeKit、主 App、键盘扩展、共享扩展、文档
+- [x] Phase 1（2026-11-05）：v0.2 清空历史
+- [x] Phase 2（2026-11-06）：三条小修
+- [ ] ~~Phase 3：iPad + 键盘回车键~~（2026-11-06 取消）
 
 ## 任务
 
-### Phase 3：iPad + 键盘回车键（2026-11-06 确认）
-总体约束：Bundle ID、capability、部署目标（17.6）都不改；iPhone 上的外观和行为除回车键外不变；每个任务按 CLAUDE.md 同步改「各 target 实现要点」「Target 与 Bundle ID」和 README 使用步骤；每个任务都要 `swift test` 全过，模拟器和 iphoneos 两种构建都过。模拟器上要配对时，用 Mac 上临时起的测试服务（假剪贴板、临时 config 放仓库外，不碰 Mac 真实剪贴板，用完就停），不用 Windows 上的真实 token。
-- **P3-1 三个 target 打开 iPad 支持**（executor 第 1 批）
-  - 难度：低
-  - 内容：三个 target 的 `TARGETED_DEVICE_FAMILY` 改成 `1,2`（扩展也要改，否则 iPad 上不出现）；主 App 在 iPad 上支持四个方向，iPhone 仍只竖屏；不设 `UIRequiresFullScreen`（iPadOS 26 起废弃，App 要适应任意窗口大小）。优先用 `xcrun xcodeproj setting` 改
-  - 验收标准：构建产物里三个 bundle 的 `UIDeviceFamily` 都是 1、2；iphoneos 产物的 entitlements 三个 bundle 都还带 `application-groups` 和 `keychain-access-groups`；iPad 模拟器能装、能启动、能横竖屏旋转；iPhone 模拟器仍锁竖屏
-- **P3-2 主 App 的 iPad 布局和扫码方向**（executor 第 1 批）
+### 待做
+- **每周自动续签**
   - 难度：中
-  - 内容：iPad 竖屏、横屏、窄窗口（分屏 / 窗口化）下各页面都能正常用：未配对引导、手动输入、配对确认、已配对（测试连接、清空历史、解除配对）；三个 sheet 在 iPad 上内容完整；两个确认框在 iPad 上以弹出框显示不崩；扫码预览跟着界面方向转（iOS 17 的 `AVCaptureDevice.RotationCoordinator` 或等效做法），横屏时画面不歪
-  - 验收标准：iPad 模拟器竖屏、横屏各页面截图正常，窄窗口下不截断；iPhone 模拟器回归截图和改动前一致；扫码方向模拟器验不了（没有相机），代码审查，留到 iPad 真机
-- **P3-3 共享扩展在 iPad 上**（executor 第 1 批）
+  - 验收标准：一条命令能在 Mac 上重新签名，并把 ClipBridge（含键盘和共享扩展）装到 iPhone，配对信息和键盘设置不丢；定时任务每天检查，距上次成功满 5 天就自动跑，错过会补跑，失败时 Mac 弹通知；2026-11-10（当前签名过期）前在真机上跑通一次
+  - 注意：免费账号能不能用命令行续签，网上说法不一，要先手动验证；不准改 Bundle ID。已知 2026-11-05 实测：描述文件没到期时重装不会顺延，Xcode 只在快过期或已过期时才重新签发，所以「满 5 天就跑」时能不能拿到新的描述文件也要验证。命令行装机步骤见「定期事项」；手机要插线并解锁
+- **简历材料**
   - 难度：低
-  - 内容：iPad 上分享时扩展界面完整、按钮可点；点框外或下拉关闭时和 iPhone 一样走取消流程，context 只结束一次；iPhone 行为不变
-  - 验收标准：iPad 模拟器里选中文字 → 分享 → ClipBridge，界面截图正常，发到 Mac 测试服务成功（服务端历史里出现 source=phone 的这条）；点框外关闭后再分享一次仍正常；iPhone 模拟器回归
-- **P3-4 键盘回车键**（executor 第 2 批）
-  - 难度：低
-  - 内容：底栏加回车键，点了 `insertText("\n")`；按键文字跟随 `textDocumentProxy.returnKeyType`（默认「换行」，send「发送」，search「搜索」，go「前往」，done「完成」，next「下一项」等，认不出的回退「换行」），`textDidChange` 时刷新；VoiceOver 标签和按键文字一致；不做长按
-  - 验收标准：iPhone 模拟器里备忘录点回车能换行；搜索类输入框里按键显示对应文字、点了能触发；竖屏 / 横屏底栏 6 个键不挤
-- **P3-5 键盘在 iPad 上的尺寸**（executor 第 2 批）
-  - 难度：中
-  - 内容：现在「宽度 > 600 就用横屏的 190 pt」会让 iPad 竖屏也用 190 pt，要改成按实际可用高度 / 键盘宽度判断；分别处理 iPad 全宽键盘和浮动键盘（浮动键盘是 iPhone 大小）；卡片在很宽的键盘上不要拉成一条长线（限宽居中或宽时两列，executor 选一个并说明理由）；底栏按键在宽键盘上不过度拉伸；iPhone 仍是竖屏 280 / 横屏 190 pt；不加缓存、不加依赖
-  - 验收标准：iPad 模拟器竖屏、横屏、浮动键盘三种截图里至少能看到 2 张卡片、按键可点；iPhone 模拟器回归截图和改动前一致
-- **P3-6 iPhone 真机验收**（维护者，iPhone 插在 Mac 上即可，Windows 服务开着）
-  - 难度：低
-  - 验收标准：回车键在备忘录换行、在搜索框显示对应文字；键盘拉取 / 插入 / 发送剪贴板，共享扩展发文字，主 App 测试连接，都和以前一样
-- **P3-7 iPad 真机验收**（维护者，等 iPad 到手）
-  - 难度：中（要在 iPad 上开开发者模式；免费账号会登记这台 iPad，占 3 台设备里的一台）
-  - 验收标准：iPad 上扫码配对（竖屏、横屏扫码画面都不歪）、测试连接、键盘拉取 / 插入 / 回车（全宽和浮动两种）、共享扩展发文字到电脑、清空历史都正常；本地网络弹窗是否出现记下来
+  - 验收标准：根据代码列出可以写进简历的技术亮点和具体数字，交给导演定稿英文描述；README 顶部的演示截图或 GIF 可选
 
-### 待补测（v0.1 真机补测，不影响日常使用；都在 Mac + iPhone 上做，Windows 服务开着）
-补测 2、4、5、6 已在 2026-11-05 完成（见「已完成」），编号保留不重排。
-- **补测 1「本地网络」权限弹窗和拒绝后的 -1009 提示**
-  - 难度：中（要搭出同一子网的环境，例如电脑连手机热点）
-  - 验收标准：主 App 首次「测试连接」弹出本地网络权限弹窗；拒绝后显示本地网络被拒的提示（URLError -1009）；到设置里重新允许后能连通，允许后键盘和共享扩展也能连通
-- **补测 3 键盘内存**
-  - 难度：中
-  - 验收标准：Xcode → Debug → Attach to Process by Name「ClipBridgeKeyboard」，拉取 5 条卡片，反复刷新 20 次，内存不持续上涨；峰值记下来，超过 40 MB 再查原因；设置 → 隐私与安全性 → 分析与改进 → 分析数据 里没有 ClipBridgeKeyboard 的 JetsamEvent
-- **补测 7 扩展是否计入免费账号「每台 3 个 App」的限额**（暂缓）
-  - 暂缓原因：测它要新建 App，会占用免费账号每 7 天 10 个 App ID 的额度，等真有别的 App 要装时再测
-  - 难度：低
-  - 验收标准：得出明确结论（例如再装一个免费签名的 App 时是否被拒），写进 CLAUDE.md 的「每 7 天重装（免费账号）」一节
+### 可选补测（不阻塞；都在 Mac + iPhone 上做，Windows 服务开着）
+原补测 2（共享扩展反向激活规则）、4（键盘和共享扩展的异常提示，即故障演练）、5、6 已在 2026-11-05 做完，编号保留。
+- 补测 1「本地网络」权限弹窗和拒绝后的 -1009 提示（难度：中，要同一子网的环境，例如电脑连手机热点）。验收：主 App 首次「测试连接」时弹窗；拒绝后显示本地网络被拒的提示；到设置里重新允许后，主 App、键盘、共享扩展都能连通
+- 补测 3 键盘内存（难度：中）。验收：Xcode → Debug → Attach to Process by Name「ClipBridgeKeyboard」，拉取 5 条卡片、反复刷新 20 次，内存不持续上涨，记下峰值（超过 40 MB 再查原因）；设置 → 隐私与安全性 → 分析与改进 → 分析数据里没有 ClipBridgeKeyboard 的 JetsamEvent
+- 补测 7 扩展是否计入免费账号「每台 3 个 App」的限额（难度：低；暂缓，因为要新建 App，会占每 7 天 10 个 App ID 的额度）。验收：得出明确结论，写进 CLAUDE.md「每 7 天重装（免费账号）」
 
 ### 已完成
-- 2026-11-06 Phase 2 三条小修：解除配对确认框补显式「取消」（`bca57e4`）、键盘空状态文案改为「电脑上暂时没有记录…」（`961a903`）、删掉键盘 Keychain probe（`9ec3a6e`）。Mac 上 `swift test` 89 个全过、两种构建都过；真机（提前装，iOS 26.6.1）三条都通过，其中 P2-1 按改过的标准：iOS 26 弹出框不显示「取消」，点框外关闭、配对还在（见决策记录）
-- 2026-11-05 v0.2 清空历史（Phase 1）：服务端 0.3.0 `DELETE /clip/history`、Kit `clearHistory()`、主 App 带确认的清空按钮；真机 B 到 H 全过，顺带补测 2、4、5、6 全过，结论写进 CLAUDE.md（iOS「实测结论」「已知坑」「每 7 天重装」「工程与工具」）。准备任务：P1-1 找到用 xctrace 从 Mac 录手机日志（不用 sudo；能录到系统框架的 info 级，本项目自己的 info 级录不到），P1-2 按代码整理每步预期文案并实测 0.2.0 对 DELETE 回 405；P1-3 README 的 v0.1 验收日期改为 11-03
-- 2026-11-05 切换到 Claude Code 导演会话 + executor 子代理：CLAUDE.md 的协作部分换成导演规则，新建 `.claude/agents/executor.md`
-- 2026-11-04 切换到导演 / 执行分工：CLAUDE.md 改为协作规则 + 代码规则，进度移到 PROGRESS.md，导演审查通过
+- 2026-11-06 Phase 2 三条小修：解除配对确认框补「取消」、键盘空状态文案、删掉键盘 Keychain probe；`swift test` 89 个全过，真机通过
+- 2026-11-05 Phase 1 v0.2 清空历史：服务 0.3.0 `DELETE /clip/history`、Kit `clearHistory()`、主 App 清空按钮；真机全过，顺带做完补测 2、4、5、6
+- 2026-11-05 切换到 Claude Code 导演会话 + executor 子代理（2026-11-06 换成 claude.ai 导演）
+- 2026-11-04 切换到导演 / 执行分工，进度移到 PROGRESS.md
 - 2026-11-03 发布 v0.1.0：Windows 服务 + iOS 主 App / 键盘 / 共享扩展，双向真机验收通过
 
 ## 定期事项
-- 免费账号的描述文件 7 天过期，本轮到期 **2026-11-10 06:11 UTC（美东 01:11）**。到期后 App、键盘、共享扩展一起打不开，要重装；配对信息和键盘设置都保留
-- **到期前重装不会顺延**：2026-11-05 用命令行重装，`embedded.mobileprovision` 仍是 11-03 签发、11-10 到期（Xcode 只在描述文件快过期或已过期时才重新签发）。所以要等到期后再重装，到时顺便试命令行能不能自己续签（`xcodebuild … -allowProvisioningUpdates` 能否拿到新描述文件），不行再用 Xcode ⌘R
-- 命令行装机（2026-11-05 实测可用，代替 ⌘R）：手机插线解锁 → `xcodebuild -project ios/ClipBridge.xcodeproj -scheme ClipBridge -configuration Debug -destination 'id=<UDID>' -allowProvisioningUpdates build` → `xcrun devicectl device install app --device <UDID> <DerivedData>/Build/Products/Debug-iphoneos/ClipBridge.app` → `xcrun devicectl device process launch --device <UDID> --terminate-existing com.charleschen.ClipBridge`（用 UDID 不用设备名，见 CLAUDE.md）。装完查到期日：`security cms -D -i <ClipBridge.app>/embedded.mobileprovision | plutil -extract ExpirationDate raw -o - -`，重装后更新这里的日期
+- 免费账号的描述文件 7 天过期，本轮到期 **2026-11-10 06:11 UTC（美东 01:11）**。到期后三个 target 一起打不开，重装即可，配对信息和键盘设置都保留。到期前重装不会顺延
+- 命令行装机（2026-11-05 实测可用，代替 ⌘R）：手机插线解锁 → `xcodebuild -project ios/ClipBridge.xcodeproj -scheme ClipBridge -configuration Debug -destination 'id=<UDID>' -allowProvisioningUpdates build` → `xcrun devicectl device install app --device <UDID> <DerivedData>/Build/Products/Debug-iphoneos/ClipBridge.app` → `xcrun devicectl device process launch --device <UDID> --terminate-existing com.charleschen.ClipBridge`（用 UDID，不用设备名，见 CLAUDE.md）。查到期日：`security cms -D -i <ClipBridge.app>/embedded.mobileprovision | plutil -extract ExpirationDate raw -o - -`，重装后更新这里的日期
 
-## 路线图（2026-11-06 加入的三个扩展目标，都要做，顺序待定）
-建议顺序：iPad → Mac → Windows → 给别人用。iPad 改动最小、全部复用现有代码；Mac 端只在自己电脑上用，没有分发问题；给别人用最大，还要先定花不花钱、先做 HTTPS。
+## 想法（只记下来，不做）
+- 一个手势同步：App Intents + 轻点背面
+- iPad 和电脑互传（2026-11-06 加入后当天撤回；半成品在 `wip/ipad-phase3`）
+- Mac → Windows（菜单栏 App，或 `pbpaste` + POST）
+- 给别人用（Windows 打包成 exe、付费开发者账号或别人自己编译、面向非开发者的 README）
+- 跨网络使用、HTTPS（自签证书 + 指纹 pin）、一次性配对码
+- 图片 / 文件、历史持久化、mDNS 发现、开机自启、托盘图标
+- 键盘：长按连删、回车键；共享扩展：分享网址时也出现
 
-### 1. iPad
-- 现状：只支持 iPhone（`TARGETED_DEVICE_FAMILY=1`），主 App 锁竖屏
-- 要做：
-  - 加上 iPad（family 改成 1,2；同一个 App，Bundle ID 不变）
-  - 主 App 的 iPad 布局和横屏
-  - 键盘在 iPad 上的尺寸（更宽，还有浮动键盘）
-  - 共享扩展在 iPad 上的弹出方式
-  - iPad 上的扫码
-- 限制：免费账号最多 3 台设备，iPad 占一台
-- 已定（2026-11-06）：有 iPad，但暂时不在手边；先模拟器，真机验收等 iPad 到手。正在做，任务见「任务 → Phase 3」
-
-### 2. Mac → Windows
-- 现状：没有 Mac 端。Mac ↔ iPhone 用系统自带的通用剪贴板，不做
-- 形式（待定）：
-  - Mac 菜单栏 App（SwiftUI，复用 ClipBridgeKit，Kit 已支持 macOS 14）：点菜单或按快捷键，把 Mac 剪贴板发到 Windows，也能看 Windows 历史
-  - 或者更轻的命令行 / 快捷指令（`pbpaste` 加 POST）
-- 新建 macOS target 要维护者在 Xcode 图形界面里做；免费账号签 Mac App 有什么限制，待查
-- 待维护者定：
-  - 形式
-  - 要不要反方向（Windows → Mac）
-  - 自动同步还是手动发送（自动同步有误发隐私内容的风险）
-
-### 3. 给别人用
-- 现状：配对本来就是一台电脑一个 token、手机扫自己电脑的二维码，架构上已经支持每人绑自己的电脑。卡在分发和安装门槛
-- iOS 分发（二选一，待定）：
-  - 付费 Apple Developer Program（约 99 美元/年，会产生费用，由维护者决定）：用 TestFlight 发给别人或上架 App Store，也不用再每 7 天重装
-  - 免费：别人用自己的 Mac + Xcode + Apple ID 编译。要把 Bundle ID、App Group、Keychain 组、Team 抽到一处配置（如 xcconfig），本仓库自己的 Bundle ID 不变；别人同样每 7 天重装
-- Windows：别人不一定会装 Python。要打包成 exe，加开机自启、托盘图标、防火墙引导（原「待排期」的开机自启、托盘图标并到这里）
-- 安全：别人可能在宿舍、公司这类不受信任的网络里用，明文 HTTP 风险更高。建议给别人用之前先做 HTTPS（见「待排期」）
-- 文档：写一份面向非开发者的 README 安装步骤
-- 待维护者定：分发方式；给谁用（几个朋友，还是公开发布）
-
-## 待排期（v0.2 及以后，只是候选，顺序未定）
-- 跨网络使用：手机和电脑不在同一网络时也能用。现在 token 和内容是明文 HTTP，只适合局域网，要和 HTTPS 一起解决
-- HTTPS（自签证书 + 指纹 pin，指纹放进配对码）；一次性配对码代替 URL 里的 token
-- 图片 / 文件；历史持久化；mDNS 发现
-- 键盘：长按连删（回车键已排进 Phase 3）；共享扩展：分享网址时也出现
-- README 顶部加键盘拉取电脑剪贴板的截图或 GIF
-
-## 建议（超出目标的改进，等维护者确认后再排期）
-- 配对 token 在 2026-11-05 的导演对话里出现过一次（服务启动横幅被整段贴出）。服务只在局域网开，风险低；介意的话在 Windows 上删掉 config.json、重启服务、手机重新扫码即可换新 token
+## 建议
+- 配对 token 在 2026-11-05 的导演对话里出现过一次（服务启动横幅被整段贴出）。服务只在局域网开，风险低；介意的话在 Windows 上删掉 config.json、重启服务、手机重新扫码，就能换新 token
 
 ## 决策记录（新的在上）
-- 2026-11-06：Phase 3 先做 iPad，小项只并进键盘回车键，由维护者选定。iPad 改动最小、全部复用现有代码，Bundle ID 不变、不占新 App ID；长按连删、共享扩展支持网址留在「待排期」。iPad 暂时不在手边，所以先在模拟器上验布局，真机验收等它到手
-- 2026-11-06：目标扩展为三项：给别人用（各自绑定自己的电脑、用自己的 iPhone）、iPad、Mac → Windows，由维护者提出。已做的不用返工；做 iPad 时要改掉「只支持 iPhone」和「主 App 锁竖屏」这两项，Bundle ID 仍然不改。顺序和关键选择（分发方式、Mac 端形式）待定
-- 2026-11-06：确认框的「取消」接受 iOS 26 的系统行为，不改成 alert。真机上清空框和解除配对框都以从按钮弹出的小框显示，系统不显示 `.cancel` 按钮、点框外即取消，两个框本来就一致（原建议说「清空框有取消」是按代码说的）；代码里的「取消」保留。P2-1 验收标准相应改为「点框外能关闭、配对还在」
-- 2026-11-05：改为 Claude Code 里的导演会话 + executor 子代理，不再用 claude.ai 的导演对话
-- 2026-11-04：v0.2 第一个任务做「清空历史」。原因：改动小，适合先把新流程跑通；真机验收时顺便重装续期、做低难度补测
-- 2026-11-04：主要开发集中在 Mac（iOS 和服务端代码都在 Mac 上写），Windows 只运行服务和做最终测试；换电脑前 commit + push，另一台先 pull。原因：iOS 只能在 Mac 上编译，开发集中在一台电脑上切换更少；服务要读 Windows 剪贴板，所以仍在 Windows 上运行
-- 2026-11-04：计划、进度、决策放仓库根目录 PROGRESS.md，由执行方（Claude Code）维护、导演审查；CLAUDE.md 放协作规则和代码规则；claude.ai 的 Project 指令只放导演规则。原因：同一信息只留一处，执行的一方能直接读写
+- 2026-11-06：协作方式换成 claude.ai 项目对话里的导演 + Claude Code 负责规划和执行（先说计划、确认后再写代码），不再用 Claude Code 里的导演会话 + executor 子代理。规则见 CLAUDE.md「协作规则」
+- 2026-11-06：目标定为「自己用 + 简历」，不做商业化。原因：同类 App 已经有不少，热度都低
+- 2026-11-06：功能开发停止。维护者原定「停在 v0.1.0」，因为 v0.2 清空历史和 Phase 2 已经做完并 push，确认改为停在现在，已做的不回滚。「一个手势同步」（App Intents + 轻点背面）只记为想法；同一天早些时候加入的 iPad、Mac → Windows、给别人用三个扩展目标撤回，也记为想法；Phase 3 取消，做了一半的 iPad 改动存在 `wip/ipad-phase3`
+- 2026-11-06：仓库保持公开（简历要用），每次推送前先问维护者
+- 2026-11-06：开发在 Mac 上做，Windows 只跑服务做联调（延续 2026-11-04 的决定）
+- 2026-11-06：待补测项改为可选，不阻塞。剩下的是热点下本地网络弹窗（补测 1）、键盘内存（补测 3）、扩展是否占 App 限额（补测 7）；反向激活规则和故障演练已在 2026-11-05 做完
+- 2026-11-06：确认框的「取消」接受 iOS 26 的系统行为，不改成 alert（真机上弹出框不显示 `.cancel` 按钮，点框外即取消）
+- 2026-11-04：v0.2 第一个任务做「清空历史」：改动小，适合先跑通新流程
+- 2026-11-04：计划、进度、决策放在仓库根目录 PROGRESS.md；CLAUDE.md 放协作规则和代码规则
 - 2026-11-03：仓库改为公开。已确认 git 历史里没有 token 和 config.json
-- 2026-11-03：Bundle ID 用大写 `com.charleschen.ClipBridge`，绝不改名。小写版注册失败（Apple 判重不区分大小写，Xcode 已先注册了大写版）；免费账号每 7 天只能注册 10 个 App ID
-- 2026-11-03：最低部署 iOS 17.6（原计划 16）。Xcode 27.2 只能给 iOS 17+ 真机装调试包，部署目标下拉的最低值是 17.6
-- 2026-11-03：配对信息 host/port 存 App Group，token 存共享 Keychain。实测免费账号 + Xcode 27.2 支持 App Group；键盘没开完全访问时也能读到地址并提示去开；token 是凭据，放 Keychain
-- v0.1 规划时：ATS 只用 `NSAllowsLocalNetworking` 放行局域网 HTTP，不全局关闭。其余网络请求仍受 ATS 保护
-- v0.1 规划时：v0.1 只做纯文本；图片 / 文件、历史持久化、mDNS、HTTPS 等放到后续
-- v0.1 规划时：先用免费 Apple ID（Personal Team）签名。代价：每 7 天重装；限 3 台设备、每台 3 个 App；没有 TestFlight
+- 2026-11-03：Bundle ID 用大写 `com.charleschen.ClipBridge`，绝不改名（小写版注册失败；免费账号每 7 天只能注册 10 个 App ID）
+- 2026-11-03：最低部署 iOS 17.6（Xcode 27.2 只能给 iOS 17+ 真机装调试包）
+- 2026-11-03：host/port 存 App Group，token 存共享 Keychain（免费账号 + Xcode 27.2 实测支持）
+- v0.1 规划时：ATS 只用 `NSAllowsLocalNetworking` 放行局域网 HTTP；只做纯文本；先用免费 Apple ID（Personal Team）签名，代价是每 7 天重装、限 3 台设备、每台 3 个 App、没有 TestFlight
