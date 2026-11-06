@@ -20,18 +20,23 @@
 
 架构：Windows 端 Python 服务（FastAPI）+ iOS 主 App（配对、测试连接）+ 键盘扩展 + 共享扩展，三个 iOS target 共用本地包 ClipBridgeKit。
 
+扩展目标（2026-11-06 维护者加入，顺序待定，细节见「路线图」）：
+- 给别人用：别人在自己的电脑上装服务，用自己的 iPhone 配对使用
+- iPad：iPad 和电脑之间也能互传，两个方向和 iPhone 一样
+- Mac → Windows：Mac 上复制的内容能传到 Windows
+
 ## 当前状态
 - v0.1.0 已于 2026-11-03 发布（标签 `v0.1.0`，仓库公开），双向主功能都在真机上验收通过
 - v0.2「清空历史」已完成（Phase 1）：Windows 上运行的服务已更新到 0.3.0，真机全部验收通过
 - Phase 2 三条小修已完成（2026-11-06 真机验收通过）
-- 进行中：无。Phase 3 建议见「交接摘要」，等维护者确认
+- 进行中：无。2026-11-06 维护者加入三个扩展目标（见「路线图」），下一个 Phase 先做哪个，等维护者确认
 
 ## 交接摘要（2026-11-06，Phase 2 结束时写）
 - 协作方式：Claude Code 里的导演会话 + executor 子代理（`.claude/agents/executor.md`），executor 类型可直接派；一个 executor 依次做几条小任务、每条一个 commit 的做法顺利
 - push：每次都要先问维护者（仓库公开）。Phase 2 结束时本地比 origin/main 多的提交是否已推，以 `git status -sb` 为准
 - 真机测试经验：先在 Mac 上 `curl http://<电脑 IP>:8765/health`。维护者不在电脑旁时 Windows 服务也可能连得上（2026-11-06 就是），这时不需要在电脑上操作的项都能先验；描述文件没到期时提前用命令行装新版做验收没问题，只是不续期；看手机日志用 xctrace，本项目自己的日志要 `.notice` 以上才录得到
 - 描述文件 2026-11-10 06:11 UTC 到期，到期后重装时顺便验证命令行能否自动续签（见「定期事项」）
-- Phase 3 建议（待确认）：从「待排期」做键盘的回车键和长按连删，加上共享扩展在分享网址时也出现。都在 Mac 上改，真机验收可以并到 11-10 重装。备选：Windows 服务开机自启（要维护者在 Windows 上验收）
+- Phase 3（待确认）：维护者 2026-11-06 加入三个扩展目标，要求下一个对话开始做（见「路线图」）。导演建议先做 iPad；键盘回车键 / 长按连删、共享扩展支持网址这些小项可以并进来。开工前先和维护者定顺序，再定所选目标的「待维护者定」各项
 
 ## 阶段（v0.1 全部完成）
 - [x] Windows v0.1：Python 服务（纯文本）
@@ -69,11 +74,45 @@
 - **到期前重装不会顺延**：2026-11-05 用命令行重装，`embedded.mobileprovision` 仍是 11-03 签发、11-10 到期（Xcode 只在描述文件快过期或已过期时才重新签发）。所以要等到期后再重装，到时顺便试命令行能不能自己续签（`xcodebuild … -allowProvisioningUpdates` 能否拿到新描述文件），不行再用 Xcode ⌘R
 - 命令行装机（2026-11-05 实测可用，代替 ⌘R）：手机插线解锁 → `xcodebuild -project ios/ClipBridge.xcodeproj -scheme ClipBridge -configuration Debug -destination 'id=<UDID>' -allowProvisioningUpdates build` → `xcrun devicectl device install app --device <UDID> <DerivedData>/Build/Products/Debug-iphoneos/ClipBridge.app` → `xcrun devicectl device process launch --device <UDID> --terminate-existing com.charleschen.ClipBridge`（用 UDID 不用设备名，见 CLAUDE.md）。装完查到期日：`security cms -D -i <ClipBridge.app>/embedded.mobileprovision | plutil -extract ExpirationDate raw -o - -`，重装后更新这里的日期
 
+## 路线图（2026-11-06 加入的三个扩展目标，都要做，顺序待定）
+建议顺序：iPad → Mac → Windows → 给别人用。iPad 改动最小、全部复用现有代码；Mac 端只在自己电脑上用，没有分发问题；给别人用最大，还要先定花不花钱、先做 HTTPS。
+
+### 1. iPad
+- 现状：只支持 iPhone（`TARGETED_DEVICE_FAMILY=1`），主 App 锁竖屏
+- 要做：
+  - 加上 iPad（family 改成 1,2；同一个 App，Bundle ID 不变）
+  - 主 App 的 iPad 布局和横屏
+  - 键盘在 iPad 上的尺寸（更宽，还有浮动键盘）
+  - 共享扩展在 iPad 上的弹出方式
+  - iPad 上的扫码
+- 限制：免费账号最多 3 台设备，iPad 占一台
+- 待维护者定：有没有 iPad 做真机验收。模拟器能验布局，验不了本地网络和真实键盘
+
+### 2. Mac → Windows
+- 现状：没有 Mac 端。Mac ↔ iPhone 用系统自带的通用剪贴板，不做
+- 形式（待定）：
+  - Mac 菜单栏 App（SwiftUI，复用 ClipBridgeKit，Kit 已支持 macOS 14）：点菜单或按快捷键，把 Mac 剪贴板发到 Windows，也能看 Windows 历史
+  - 或者更轻的命令行 / 快捷指令（`pbpaste` 加 POST）
+- 新建 macOS target 要维护者在 Xcode 图形界面里做；免费账号签 Mac App 有什么限制，待查
+- 待维护者定：
+  - 形式
+  - 要不要反方向（Windows → Mac）
+  - 自动同步还是手动发送（自动同步有误发隐私内容的风险）
+
+### 3. 给别人用
+- 现状：配对本来就是一台电脑一个 token、手机扫自己电脑的二维码，架构上已经支持每人绑自己的电脑。卡在分发和安装门槛
+- iOS 分发（二选一，待定）：
+  - 付费 Apple Developer Program（约 99 美元/年，会产生费用，由维护者决定）：用 TestFlight 发给别人或上架 App Store，也不用再每 7 天重装
+  - 免费：别人用自己的 Mac + Xcode + Apple ID 编译。要把 Bundle ID、App Group、Keychain 组、Team 抽到一处配置（如 xcconfig），本仓库自己的 Bundle ID 不变；别人同样每 7 天重装
+- Windows：别人不一定会装 Python。要打包成 exe，加开机自启、托盘图标、防火墙引导（原「待排期」的开机自启、托盘图标并到这里）
+- 安全：别人可能在宿舍、公司这类不受信任的网络里用，明文 HTTP 风险更高。建议给别人用之前先做 HTTPS（见「待排期」）
+- 文档：写一份面向非开发者的 README 安装步骤
+- 待维护者定：分发方式；给谁用（几个朋友，还是公开发布）
+
 ## 待排期（v0.2 及以后，只是候选，顺序未定）
 - 跨网络使用：手机和电脑不在同一网络时也能用。现在 token 和内容是明文 HTTP，只适合局域网，要和 HTTPS 一起解决
 - HTTPS（自签证书 + 指纹 pin，指纹放进配对码）；一次性配对码代替 URL 里的 token
-- iPad 支持；Mac 端只做 Mac ↔ Windows（Mac ↔ iPhone 用系统自带的通用剪贴板）
-- 图片 / 文件；历史持久化；mDNS 发现；开机自启；托盘图标
+- 图片 / 文件；历史持久化；mDNS 发现
 - 键盘：长按连删、回车键；共享扩展：分享网址时也出现
 - README 顶部加键盘拉取电脑剪贴板的截图或 GIF
 
@@ -81,6 +120,7 @@
 - 配对 token 在 2026-11-05 的导演对话里出现过一次（服务启动横幅被整段贴出）。服务只在局域网开，风险低；介意的话在 Windows 上删掉 config.json、重启服务、手机重新扫码即可换新 token
 
 ## 决策记录（新的在上）
+- 2026-11-06：目标扩展为三项：给别人用（各自绑定自己的电脑、用自己的 iPhone）、iPad、Mac → Windows，由维护者提出。已做的不用返工；做 iPad 时要改掉「只支持 iPhone」和「主 App 锁竖屏」这两项，Bundle ID 仍然不改。顺序和关键选择（分发方式、Mac 端形式）待定
 - 2026-11-06：确认框的「取消」接受 iOS 26 的系统行为，不改成 alert。真机上清空框和解除配对框都以从按钮弹出的小框显示，系统不显示 `.cancel` 按钮、点框外即取消，两个框本来就一致（原建议说「清空框有取消」是按代码说的）；代码里的「取消」保留。P2-1 验收标准相应改为「点框外能关闭、配对还在」
 - 2026-11-05：改为 Claude Code 里的导演会话 + executor 子代理，不再用 claude.ai 的导演对话
 - 2026-11-04：v0.2 第一个任务做「清空历史」。原因：改动小，适合先把新流程跑通；真机验收时顺便重装续期、做低难度补测
