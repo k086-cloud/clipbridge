@@ -20,12 +20,13 @@
 
 ## 当前状态
 - 功能开发已停（2026-11-06）：停在 v0.1.0 + v0.2 清空历史（服务 0.3.0）+ Phase 2 三条小修，全部在真机上验收通过。之后只做维护（续签）和简历材料
+- 自动续签已上线（2026-11-06）：`scripts/renew-ios.sh` + launchd 定时任务，当前描述文件到期 2026-11-13 07:53 UTC
 - Phase 3（iPad + 键盘回车键）已取消。做了一半的 iPad 改动存在本地分支 `wip/ipad-phase3`：没有编译验证，也没有审查，不合并
 - 本地 main 比 origin/main 多几个文档提交，还没 push（以 `git status -sb` 为准）
 
 ## 交接摘要（2026-11-06，换成 claude.ai 导演时写）
 - 新的协作方式见 CLAUDE.md「协作规则」。原来的导演会话 + executor 子代理不再用；`.claude/agents/executor.md` 还在仓库里，删不删等维护者定
-- 描述文件 2026-11-10 06:11 UTC 到期，到期后 App、键盘、共享扩展一起打不开。「每周自动续签」要在这之前跑通一次
+- 续签已自动化：launchd 每天 20:00 和登录时检查，满 5 天自动续签并装机，成功或失败都在 Mac 上弹通知。要续签成功，iPhone 得连着 Mac 并解锁过；收到「续签失败」的通知就看 `~/Library/Application Support/ClipBridge/renew-last.log`
 - 2026-11-06 为腾磁盘删掉了 Mac 上的 iOS 模拟器运行时和模拟器设备。真机编译不受影响（删完后 iphoneos 构建实测通过）；CLAUDE.md 里的模拟器构建命令要先 `xcodebuild -downloadPlatform iOS` 重新下载（约 8 GB）才能用
 - 真机测试经验：先在 Mac 上 `curl http://<电脑 IP>:8765/health`。Windows 服务连得上时，不需要在电脑旁操作的项都能先验。看手机日志用 xctrace，本项目自己的日志要 `.notice` 以上才录得到（见 CLAUDE.md「工程与工具」）
 
@@ -38,10 +39,6 @@
 ## 任务
 
 ### 待做
-- **每周自动续签**
-  - 难度：中
-  - 验收标准：一条命令能在 Mac 上重新签名，并把 ClipBridge（含键盘和共享扩展）装到 iPhone，配对信息和键盘设置不丢；定时任务每天检查，距上次成功满 5 天就自动跑，错过会补跑，失败时 Mac 弹通知；2026-11-10（当前签名过期）前在真机上跑通一次
-  - 注意：免费账号能不能用命令行续签，网上说法不一，要先手动验证；不准改 Bundle ID。已知 2026-11-05 实测：描述文件没到期时重装不会顺延，Xcode 只在快过期或已过期时才重新签发，所以「满 5 天就跑」时能不能拿到新的描述文件也要验证。命令行装机步骤见「定期事项」；手机要插线并解锁
 - **简历材料**
   - 难度：低
   - 验收标准：根据代码列出可以写进简历的技术亮点和具体数字，交给导演定稿英文描述；README 顶部的演示截图或 GIF 可选
@@ -53,6 +50,7 @@
 - 补测 7 扩展是否计入免费账号「每台 3 个 App」的限额（难度：低；暂缓，因为要新建 App，会占每 7 天 10 个 App ID 的额度）。验收：得出明确结论，写进 CLAUDE.md「每 7 天重装（免费账号）」
 
 ### 已完成
+- 2026-11-06 每周自动续签：`scripts/renew-ios.sh`（挪走旧描述文件 → 编译签名 → 检查描述文件是新的 → 装机，失败就放回旧文件并弹通知）+ `scripts/install-renew-agent.sh`（launchd，每天 20:00 + 登录时检查，满 5 天才跑）。终端和 launchd 下各真机跑通一次，新描述文件到期 11-13；没到期时直接退出、失败时放回旧描述文件这两种情况也测过。配对信息、键盘设置是否保留，待维护者在手机上确认
 - 2026-11-06 Phase 2 三条小修：解除配对确认框补「取消」、键盘空状态文案、删掉键盘 Keychain probe；`swift test` 89 个全过，真机通过
 - 2026-11-05 Phase 1 v0.2 清空历史：服务 0.3.0 `DELETE /clip/history`、Kit `clearHistory()`、主 App 清空按钮；真机全过，顺带做完补测 2、4、5、6
 - 2026-11-05 切换到 Claude Code 导演会话 + executor 子代理（2026-11-06 换成 claude.ai 导演）
@@ -60,7 +58,7 @@
 - 2026-11-03 发布 v0.1.0：Windows 服务 + iOS 主 App / 键盘 / 共享扩展，双向真机验收通过
 
 ## 定期事项
-- 免费账号的描述文件 7 天过期，本轮到期 **2026-11-10 06:11 UTC（美东 01:11）**。到期后三个 target 一起打不开，重装即可，配对信息和键盘设置都保留。到期前重装不会顺延
+- 免费账号的描述文件 7 天过期，本轮到期 **2026-11-13 07:53 UTC（美东 02:53）**，由自动续签处理（见 CLAUDE.md「每 7 天重装」）。到期后三个 target 一起打不开，重装即可，配对信息和键盘设置都保留。直接重装不会顺延，要先挪走本地缓存的描述文件，脚本会做这一步
 - 命令行装机（2026-11-05 实测可用，代替 ⌘R）：手机插线解锁 → `xcodebuild -project ios/ClipBridge.xcodeproj -scheme ClipBridge -configuration Debug -destination 'id=<UDID>' -allowProvisioningUpdates build` → `xcrun devicectl device install app --device <UDID> <DerivedData>/Build/Products/Debug-iphoneos/ClipBridge.app` → `xcrun devicectl device process launch --device <UDID> --terminate-existing com.charleschen.ClipBridge`（用 UDID，不用设备名，见 CLAUDE.md）。查到期日：`security cms -D -i <ClipBridge.app>/embedded.mobileprovision | plutil -extract ExpirationDate raw -o - -`，重装后更新这里的日期
 
 ## 想法（只记下来，不做）
@@ -76,6 +74,7 @@
 - 配对 token 在 2026-11-05 的导演对话里出现过一次（服务启动横幅被整段贴出）。服务只在局域网开，风险低；介意的话在 Windows 上删掉 config.json、重启服务、手机重新扫码，就能换新 token
 
 ## 决策记录（新的在上）
+- 2026-11-06：续签用 launchd 定时任务（每天 20:00 + 登录时检查，距上次成功满 5 天才续签），不用 Xcode ⌘R。依据是当天实测：把本地缓存的描述文件挪走后，命令行 `-allowProvisioningUpdates` 能提前拿到新的 7 天描述文件
 - 2026-11-06：协作方式换成 claude.ai 项目对话里的导演 + Claude Code 负责规划和执行（先说计划、确认后再写代码），不再用 Claude Code 里的导演会话 + executor 子代理。规则见 CLAUDE.md「协作规则」
 - 2026-11-06：目标定为「自己用 + 简历」，不做商业化。原因：同类 App 已经有不少，热度都低
 - 2026-11-06：功能开发停止。维护者原定「停在 v0.1.0」，因为 v0.2 清空历史和 Phase 2 已经做完并 push，确认改为停在现在，已做的不回滚。「一个手势同步」（App Intents + 轻点背面）只记为想法；同一天早些时候加入的 iPad、Mac → Windows、给别人用三个扩展目标撤回，也记为想法；Phase 3 取消，做了一半的 iPad 改动存在 `wip/ipad-phase3`
