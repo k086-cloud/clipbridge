@@ -23,14 +23,14 @@
 ## 当前状态
 - v0.1.0 已于 2026-11-03 发布（标签 `v0.1.0`，仓库公开），双向主功能都在真机上验收通过
 - v0.2「清空历史」已完成（Phase 1）：Windows 上运行的服务已更新到 0.3.0，真机全部验收通过
-- 进行中：无。Phase 2 计划见「交接摘要」，等维护者确认
+- 进行中：Phase 2 三条小修（2026-11-06 维护者确认）。Mac 上已改完并审查通过，等 11-10 到期重装时做真机验收（P2-4）
 
 ## 交接摘要（2026-11-05，Phase 1 结束时写）
 - 协作方式：Claude Code 里的导演会话 + executor 子代理（`.claude/agents/executor.md`）。本会话中途才建 executor，所以派任务时用的是通用子代理加「先读 executor.md」；新会话里可以直接用 executor 类型
 - Phase 1 的文档提交已在 2026-11-05 全部 push；以后每次 push 仍要先问维护者（仓库公开）
 - 真机测试经验：开始前先在 Mac 上 `curl http://<电脑 IP>:8765/health` 确认 Windows 服务在跑（本次 B 第一次失败就是服务没开）；补测或调试要看手机日志时用 xctrace，录 1 分钟左右，本项目自己的日志要 `.notice` 以上才录得到
 - 描述文件 2026-11-10 06:11 UTC 到期，到期后重装时顺便验证命令行能否自动续签（见「定期事项」）
-- Phase 2 建议（待确认）：做「建议」区的三条小修（解除配对确认框加「取消」、清空后键盘空状态文案、去掉 Keychain probe 并改正注释和 CLAUDE.md），改完在 11-10 描述文件到期重装时一起真机验收；之后再从「待排期」选下一个功能
+- Phase 2（2026-11-06 确认）：「建议」区的三条小修，Mac 上已完成，真机验收 P2-4 的步骤写在「任务」→「Phase 2」；之后再从「待排期」选下一个功能
 
 ## 阶段（v0.1 全部完成）
 - [x] Windows v0.1：Python 服务（纯文本）
@@ -42,6 +42,24 @@
 - [x] iOS 5：收尾（README、CLAUDE.md 定稿）
 
 ## 任务
+
+### Phase 2：三条小修（2026-11-06 确认；Mac 上改完，真机验收等 11-10 到期重装）
+P2-1 到 P2-3 在 Mac 上已完成（2026-11-06，导演审查通过；`swift test` 89 个用例全过，模拟器和 iphoneos 构建都过，未新增 warning），只差真机：
+- P2-1 解除配对确认框补显式「取消」，和清空确认框一致（`bca57e4`）
+- P2-2 键盘空状态文案改为「电脑上暂时没有记录。在电脑上复制一段文字，再点刷新。」（`961a903`）
+- P2-3 删掉键盘 Keychain probe 和随之不用的 `Logger`，注释改为以真机结论为依据；CLAUDE.md 里的历史结论注明 probe 已删（`9ec3a6e`）
+- **P2-4 真机验收**：待做，2026-11-10 06:11 UTC（美东 01:11）描述文件到期后、维护者在家时
+  - 难度：低
+  - 验收标准：下面每步都符合预期；续签结论写进 CLAUDE.md「每 7 天重装」；新到期日写进「定期事项」
+  - 步骤（Windows 服务 0.3.0 开着；iPhone 插 Mac 并解锁）：
+    1. Mac 上 `curl http://<电脑 IP>:8765/health`，有 JSON 返回再往下
+    2. 用命令行装机（见「定期事项」）。看 `xcodebuild … -allowProvisioningUpdates` 能不能拿到新描述文件：装完查到期日，比 11-10 晚就算自动续签成功；编译报描述文件错误就退回 Xcode ⌘R，记下报错
+    3. 打开 App → 「测试连接」两行全绿（配对信息保留）
+    4. P2-1：点「解除配对」→ 弹框里有「取消」→ 点「取消」→ 配对还在，再测一次连接仍全绿（不要真的解除配对）
+    5. P2-2：「清空电脑上的历史」→ 确认 → 在任意输入框切到 ClipBridge 键盘 → 显示新文案；电脑上复制一段新文字（清空不会重新记录电脑剪贴板上已有的那条）→ 键盘点刷新 → 出现卡片
+    6. P2-3：设置 → 通用 → 键盘 → 键盘 → ClipBridge → 关掉「允许完全访问」→ 打开键盘 → 提示「要连接电脑 <IP> 需要「允许完全访问」…」；再打开完全访问 → 键盘正常拉到卡片
+    7. 回归：Safari 选中文字 → 分享 → ClipBridge → 电脑 Ctrl+V 得到同样文字
+  - 通过后：问维护者能否 push（本地比 origin/main 多的提交一起推）
 
 ### 待补测（v0.1 真机补测，不影响日常使用；都在 Mac + iPhone 上做，Windows 服务开着）
 补测 2、4、5、6 已在 2026-11-05 完成（见「已完成」），编号保留不重排。
@@ -65,7 +83,7 @@
 ## 定期事项
 - 免费账号的描述文件 7 天过期，本轮到期 **2026-11-10 06:11 UTC（美东 01:11）**。到期后 App、键盘、共享扩展一起打不开，要重装；配对信息和键盘设置都保留
 - **到期前重装不会顺延**：2026-11-05 用命令行重装，`embedded.mobileprovision` 仍是 11-03 签发、11-10 到期（Xcode 只在描述文件快过期或已过期时才重新签发）。所以要等到期后再重装，到时顺便试命令行能不能自己续签（`xcodebuild … -allowProvisioningUpdates` 能否拿到新描述文件），不行再用 Xcode ⌘R
-- 命令行装机（2026-11-05 实测可用，代替 ⌘R）：手机插线解锁 → `xcodebuild -project ios/ClipBridge.xcodeproj -scheme ClipBridge -configuration Debug -destination 'id=<UDID>' -allowProvisioningUpdates build` → `xcrun devicectl device install app --device char <DerivedData>/Build/Products/Debug-iphoneos/ClipBridge.app` → `xcrun devicectl device process launch --device char --terminate-existing com.charleschen.ClipBridge`。装完查到期日：`security cms -D -i <ClipBridge.app>/embedded.mobileprovision | plutil -extract ExpirationDate raw -o - -`，重装后更新这里的日期
+- 命令行装机（2026-11-05 实测可用，代替 ⌘R）：手机插线解锁 → `xcodebuild -project ios/ClipBridge.xcodeproj -scheme ClipBridge -configuration Debug -destination 'id=<UDID>' -allowProvisioningUpdates build` → `xcrun devicectl device install app --device <UDID> <DerivedData>/Build/Products/Debug-iphoneos/ClipBridge.app` → `xcrun devicectl device process launch --device <UDID> --terminate-existing com.charleschen.ClipBridge`（用 UDID 不用设备名，见 CLAUDE.md）。装完查到期日：`security cms -D -i <ClipBridge.app>/embedded.mobileprovision | plutil -extract ExpirationDate raw -o - -`，重装后更新这里的日期
 
 ## 待排期（v0.2 及以后，只是候选，顺序未定）
 - 跨网络使用：手机和电脑不在同一网络时也能用。现在 token 和内容是明文 HTTP，只适合局域网，要和 HTTPS 一起解决
@@ -76,9 +94,6 @@
 - README 顶部加键盘拉取电脑剪贴板的截图或 GIF
 
 ## 建议（超出目标的改进，等维护者确认后再排期）
-- 键盘的 Keychain probe 已经得出结论（没开完全访问时连不上 securityd），可以删掉；删掉后键盘代码注释和 CLAUDE.md「各 target 实现要点」里「没开完全访问时不碰 Keychain」才名副其实（现在 probe 会去读一次 Keychain，只记日志）。若想保留，至少改成 `.notice`，否则 xctrace 录不到（来源：P1-3）
-- 键盘空状态文案：清空历史后键盘显示「电脑上还没有复制过内容…」，语义不贴切。可改成不论是否清空过都成立的说法（来源：P1-2）
-- 解除配对确认框没有显式的「取消」按钮：真机 iOS 26 上显示成弹出小框，只有红色「解除配对」，不出现任何取消按钮，只能点框外关闭；清空确认框有「取消」，两者不一致。可以像清空确认框一样显式加「取消」（来源：P1-2，补测 5 真机确认）
 - 配对 token 在 2026-11-05 的导演对话里出现过一次（服务启动横幅被整段贴出）。服务只在局域网开，风险低；介意的话在 Windows 上删掉 config.json、重启服务、手机重新扫码即可换新 token
 
 ## 决策记录（新的在上）
