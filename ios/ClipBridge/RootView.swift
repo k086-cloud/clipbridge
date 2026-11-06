@@ -142,6 +142,7 @@ struct RootView: View {
                     actionError = error.localizedDescription
                 }
             }
+            Button("取消", role: .cancel) {}
         }
         .alert("操作失败", isPresented: Binding(
             get: { actionError != nil },
