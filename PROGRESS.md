@@ -26,6 +26,7 @@
 ## 交接摘要（2026-11-06，换成 claude.ai 导演时写）
 - 新的协作方式见 CLAUDE.md「协作规则」。原来的导演会话 + executor 子代理不再用；`.claude/agents/executor.md` 还在仓库里，删不删等维护者定
 - 描述文件 2026-11-10 06:11 UTC 到期，到期后 App、键盘、共享扩展一起打不开。「每周自动续签」要在这之前跑通一次
+- 2026-11-06 为腾磁盘删掉了 Mac 上的 iOS 模拟器运行时和模拟器设备。真机编译不受影响（删完后 iphoneos 构建实测通过）；CLAUDE.md 里的模拟器构建命令要先 `xcodebuild -downloadPlatform iOS` 重新下载（约 8 GB）才能用
 - 真机测试经验：先在 Mac 上 `curl http://<电脑 IP>:8765/health`。Windows 服务连得上时，不需要在电脑旁操作的项都能先验。看手机日志用 xctrace，本项目自己的日志要 `.notice` 以上才录得到（见 CLAUDE.md「工程与工具」）
 
 ## 阶段
