@@ -169,13 +169,13 @@ API 密钥只放 .env，不写进任何文件或对话。
   - 录制：`xcrun xctrace record --template Logging --device <UDID> --all-processes --time-limit 1m --no-prompt --output <仓库外的目录>/x.trace`
   - 导出：`xcrun xctrace export --input <仓库外的目录>/x.trace --xpath '/trace-toc/run[@number="1"]/data/table[@schema="os-log"]' --output <仓库外的目录>/x.xml`，再 grep
   - 录的是整台手机所有 App 的日志：放仓库外，用完就删。时间别太长：5 分钟的录制收尾保存花了约 9 分钟，1 分钟左右够用
-  - 系统 subsystem 的 info 级录得到，本项目 `com.charleschen.ClipBridge` 的 info 级一条没录到（键盘 Keychain probe 那行没出现，而系统日志证明那段代码执行了）。要用 xctrace 看自己的日志，得用 `.notice` 或更高级别
+  - 系统 subsystem 的 info 级录得到，本项目 `com.charleschen.ClipBridge` 的 info 级一条没录到（当时键盘的 Keychain probe 那行没出现，而系统日志证明那段代码执行了；那个 probe 之后已删）。要用 xctrace 看自己的日志，得用 `.notice` 或更高级别
   - 不用的办法：`log collect --device` 要 sudo（zsh 里裸写 `log` 是内建命令，要写 `/usr/bin/log`）；`xcrun devicectl device sysdiagnose` 实测报错
 - Xcode 27 新建工程默认创建嵌套 git 仓库，建工程时取消勾选（仓库里不应有 ios/.git）
 
 ### 已知坑
 - 本地网络权限按 App 记录、扩展继承；必须由主 App 前台先触发（「测试连接」）；iOS 18 起没有 NSLocalNetworkUsageDescription 弹窗不出现；被拒表现为 URLError -1009；只有直连同一 Wi-Fi 子网才算「本地」，经路由转发的流量不弹窗也不受限；模拟器不支持，只能真机测
-- 键盘没开完全访问时禁一切网络，共享 Keychain 也读不了：2026-11-05 真机（iOS 26.6.1）关掉完全访问后，键盘每次出现，系统日志都记 TCC `XPC_ERROR_CONNECTION_INVALID` 和 securityd `Failed to talk to securityd after 4 attempts`，即键盘连不上 securityd。具体 OSStatus 没录到（键盘 Keychain probe 那行是 info 级，xctrace 录不到，见「工程与工具」）。所以以 `hasFullAccess` 为准、没开时不连网、不拿 Keychain 结果做判断的做法是对的（那次 probe 只记日志）
+- 键盘没开完全访问时禁一切网络，共享 Keychain 也读不了：2026-11-05 真机（iOS 26.6.1）关掉完全访问后，键盘每次出现，系统日志都记 TCC `XPC_ERROR_CONNECTION_INVALID` 和 securityd `Failed to talk to securityd after 4 attempts`，即键盘连不上 securityd。具体 OSStatus 没录到（当时键盘 Keychain probe 那行是 info 级，xctrace 录不到，见「工程与工具」）。所以以 `hasFullAccess` 为准、没开时不连网、不读 Keychain 的做法是对的（当时的 probe 只记日志，已删）
 - 内存：键盘约 50–70 MB、共享扩展约 120 MB，超了静默被杀；键盘只显示截断文本、不缓存
 - 分享面板给的「纯文本」可能是 bplist 归档；任何从 NSItemProvider / 剪贴板拿到的 Data 都要过 `SharedTextDecoder`，解不开就报错，绝不原样发送
 - token 和剪贴板内容在局域网内明文传输，只在家用 Wi-Fi 或手机热点下用；怀疑泄露就删 config.json 重启重配

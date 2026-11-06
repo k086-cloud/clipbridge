@@ -5,7 +5,6 @@
 
 import ClipBridgeKit
 import UIKit
-import os
 
 /// 电脑 → 手机：显示电脑最近几条剪贴板内容，点卡片插入到当前输入框。
 /// 键盘进程内存很紧（社区实测约 50–70 MB 就会被静默杀掉），所以只用 UIKit、只保留 5 条、不缓存任何东西。
@@ -18,7 +17,6 @@ final class KeyboardViewController: UIInputViewController {
     private static let errorFlashDuration: TimeInterval = 6
 
     private let keyboardView = KeyboardView()
-    private let logger = Logger(subsystem: "com.charleschen.ClipBridge", category: "keyboard")
     /// 真机上是 App Group + 共享 Keychain；工程配错时为 nil，界面会直说。
     private let pairingStore: (any PairingStore)? = SharedPairingStore.live()
 
@@ -121,15 +119,15 @@ final class KeyboardViewController: UIInputViewController {
         pairing = nil
 
         guard hasFullAccess else {
-            // 没开完全访问：沙盒禁网，也不去碰 Keychain（以 hasFullAccess 为准，不用 Keychain 失败推断）。
-            // App Group 的共享容器按 Apple 文档此时仍可只读，所以能告诉用户「已配对但要开完全访问」。
+            // 没开完全访问：沙盒禁网，键盘也连不上 securityd（2026-11-05 真机：TCC XPC_ERROR_CONNECTION_INVALID、
+            // securityd「Failed to talk to securityd after 4 attempts」），所以以 hasFullAccess 为准，不连网、不读 Keychain。
+            // App Group 的共享容器此时仍可只读（真机已证实），所以能告诉用户「已配对但要开完全访问」。
             let endpoint = UserDefaultsEndpointStore(appGroup: ClipBridgeIdentifiers.appGroup)?.loadEndpoint()
             if let endpoint {
                 showMessage("要连接电脑 \(endpoint.host) 需要「允许完全访问」。\n设置 → 通用 → 键盘 → 键盘 → ClipBridge — ClipBridgeKeyboard → 允许完全访问")
             } else {
                 showMessage("尚未配对。先打开 ClipBridge App 扫码配对，再在设置里开启「允许完全访问」。")
             }
-            probeKeychainWithoutFullAccess()
             return
         }
 
@@ -263,17 +261,5 @@ final class KeyboardViewController: UIInputViewController {
             return "token 不对。在 ClipBridge App 里重新扫码配对。"
         }
         return error.localizedDescription
-    }
-
-    /// Apple 没写明没开「允许完全访问」时能不能读共享 Keychain。这里只把 OSStatus 记到控制台（Xcode 附加到键盘进程可见），
-    /// 不拿它做任何判断；也绝不打印 token 本身。
-    private func probeKeychainWithoutFullAccess() {
-        guard let accessGroup = KeychainAccessGroup.shared() else { return }
-        do {
-            let token = try KeychainTokenStore(accessGroup: accessGroup).loadToken()
-            logger.info("Keychain probe without Full Access: \(token == nil ? "no item (errSecItemNotFound)" : "readable", privacy: .public)")
-        } catch {
-            logger.info("Keychain probe without Full Access failed: \(String(describing: error), privacy: .public)")
-        }
     }
 }
