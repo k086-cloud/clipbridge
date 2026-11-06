@@ -154,7 +154,7 @@ final class KeyboardViewController: UIInputViewController {
                     guard let self, !Task.isCancelled else { return }
                     keyboardView.setLoading(false)
                     if items.isEmpty {
-                        showMessage("电脑上还没有复制过内容。在电脑上复制一段文字，再点刷新。")
+                        showMessage("电脑上暂时没有记录。在电脑上复制一段文字，再点刷新。")
                     } else {
                         keyboardView.show(items: items)
                         setStatus("电脑最近 \(items.count) 条 · 点卡片插入")
