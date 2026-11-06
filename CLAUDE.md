@@ -66,6 +66,7 @@ Windows 电脑 ↔ iPhone 剪贴板同步。Windows 端 Python 服务 + iOS 键�
 
 ## 仓库结构（monorepo）
 - `windows-server/` — Python 服务（FastAPI），包 `clipbridge_server/`
+- `scripts/` — Mac 上的续签脚本（见「每 7 天重装」）
 - `ios/` — Xcode 27 工程 `ClipBridge.xcodeproj`（JSON 格式 `project.xcproj`）+ 三个 target 目录 + 本地 Swift Package `ClipBridgeKit/`
 - 远程仓库：github.com/k086-cloud/clipbridge（公开），分支 main
 
@@ -116,14 +117,15 @@ Windows 电脑 ↔ iPhone 剪贴板同步。Windows 端 Python 服务 + iOS 键�
 - 验收环境 iPhone 17 Pro Max，iOS 26.6.1；无害的控制台日志：首次访问 App Group UserDefaults 的 CFPrefs「detaching from cfprefsd」、相机关闭时的 FigCaptureSourceRemote err=-17281
 
 ### 每 7 天重装（免费账号）
-- 描述文件 7 天过期（本轮到期日见 PROGRESS.md「定期事项」），到期后 App、键盘、共享扩展一起打不开。连上 iPhone 覆盖安装即可（Xcode 运行目标选这台 iPhone 按 ⌘R，或用下面的命令行）；键盘的启用状态和「允许完全访问」开关保留，配对信息保留（App Group 和 Keychain 都不动）
+- 描述文件 7 天过期（本轮到期日见 PROGRESS.md「定期事项」），到期后 App、键盘、共享扩展一起打不开。平时由下面的自动续签处理；手动的话连上 iPhone 覆盖安装（`scripts/renew-ios.sh`、Xcode 运行目标选这台 iPhone 按 ⌘R，或用下面的命令行）；键盘的启用状态和「允许完全访问」开关保留，配对信息保留（App Group 和 Keychain 都不动）
 - 命令行装机（2026-11-05 实测可用，代替 Xcode ⌘R）：iPhone 数据线连 Mac 并解锁，在仓库根目录依次执行
   - 编译：`xcodebuild -project ios/ClipBridge.xcodeproj -scheme ClipBridge -configuration Debug -destination 'id=<UDID>' -allowProvisioningUpdates build`
   - 安装：`xcrun devicectl device install app --device <UDID> ~/Library/Developer/Xcode/DerivedData/ClipBridge-*/Build/Products/Debug-iphoneos/ClipBridge.app`
   - 启动：`xcrun devicectl device process launch --device <UDID> --terminate-existing com.charleschen.ClipBridge`
   - 查到期日：`security cms -D -i ~/Library/Developer/Xcode/DerivedData/ClipBridge-*/Build/Products/Debug-iphoneos/ClipBridge.app/embedded.mobileprovision | plutil -extract ExpirationDate raw -o - -`（UTC）
   - `<UDID>` 从 `xcrun devicectl list devices` 看；用 UDID 不用设备名（设备名可能和 Mac 本机名撞，xctrace 实测报 ambiguous）
-- 提前重装不会顺延：描述文件没到期前重装，签进包里的还是原来那份（2026-11-05 重装后 embedded.mobileprovision 仍是 11-03 签发，到期日没变），Xcode 只在快过期或已过期时才重新签发。到期后命令行的 `-allowProvisioningUpdates` 能不能自动续签还没验证，不行就退回 Xcode ⌘R
+- 直接重装不会顺延：Xcode 只要本地还有没过期的描述文件就一直用它（2026-11-05 重装后 embedded.mobileprovision 仍是 11-03 签发）。**把本地缓存的描述文件挪走就能提前续签**：2026-11-06 把 ClipBridge 三个 target 的描述文件从 `~/Library/Developer/Xcode/UserData/Provisioning Profiles/` 挪走后，命令行 `-allowProvisioningUpdates` 当场从 Apple 拿到三份新的 7 天描述文件，装机后配对信息还在。所以免费账号可以完全用命令行续签，不需要 Xcode 图形界面
+- 自动续签（2026-11-06 起）：`scripts/renew-ios.sh` 一条命令完成「挪走旧描述文件 → 编译签名 → 检查三个 bundle 的描述文件都是新的 → 装到连着的 iPhone」，编译失败时把旧描述文件放回去；`--if-due` 表示距上次成功满 5 天才跑。`scripts/install-renew-agent.sh` 装 launchd agent `com.charleschen.clipbridge.renew`（每天 20:00 + 登录时检查，`--uninstall` 卸载）。成功和失败都在 Mac 上弹通知；状态、日志、旧描述文件备份在 `~/Library/Application Support/ClipBridge/`（`last-renewal`、`renew-last.log`、`renew-history.log`、`profile-backup/`）。设备自动取第一台已连接的 iPhone，也可用环境变量 `CLIPBRIDGE_UDID` 指定。手机要连着 Mac 并解锁过；Xcode 里的 Apple ID 要保持登录。2026-11-06 在终端和 launchd 下各真机跑通一次
 - 其他限制：每周最多注册 10 个 App ID（本项目占 3 个，**Bundle ID 绝不改名**）、3 台设备、每台 3 个 App（扩展可能计数，手机上别装其他免费签名的 App）；没有 TestFlight
 
 ### Target 与 Bundle ID（已注册到 Personal Team，绝不要改名）

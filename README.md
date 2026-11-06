@@ -24,6 +24,7 @@ clipbridge/
     ClipBridgeKeyboard/   custom keyboard extension (UIKit)
     ClipBridgeShare/      share extension (UIKit)
     ClipBridgeKit/        shared Swift package: HTTP client, pairing store, tests
+  scripts/                Mac scripts: renew the free 7-day signing and reinstall
 ```
 
 ## Status
@@ -116,7 +117,15 @@ service).
 
 - Provisioning profiles expire after **7 days**: the app, keyboard and share
   extension stop opening together. Connect the phone and press ⌘R in Xcode
-  again; the keyboard stays enabled and keeps Full Access.
+  again; the keyboard stays enabled and keeps Full Access, and the pairing is
+  kept.
+- To renew from the command line instead, connect and unlock the phone and run
+  `scripts/renew-ios.sh` on the Mac. It moves the cached ClipBridge profiles
+  aside so Xcode fetches fresh 7-day ones, builds, and installs. To do this
+  automatically, run `scripts/install-renew-agent.sh` once: a launchd agent
+  checks daily at 20:00 and at login, renews once 5 days have passed since the
+  last success, and shows a macOS notification either way (`--uninstall`
+  removes it). Both scripts assume this repository's bundle IDs.
 - At most 10 App IDs per 7 days (this project uses 3, so do not rename the
   bundle IDs casually), 3 devices, and 3 apps installed per device (the
   extensions may count, so keep no other free-signed apps on the phone).
